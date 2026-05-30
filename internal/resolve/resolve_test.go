@@ -12,7 +12,7 @@ import (
 func TestResolveRuntime(t *testing.T) {
 	t.Run("resolves from local plugins dir", func(t *testing.T) {
 		dir := t.TempDir()
-		pluginDir := filepath.Join(dir, "plugins", "custom")
+		pluginDir := filepath.Join(dir, "ext", "plugins", "custom")
 		require.NoError(t, os.MkdirAll(pluginDir, 0755))
 		require.NoError(t, os.WriteFile(filepath.Join(pluginDir, "runtime.yaml"), []byte(`
 name: custom
@@ -42,7 +42,7 @@ cmd: ["my-cli", "run"]
 
 	t.Run("local overrides embedded", func(t *testing.T) {
 		dir := t.TempDir()
-		pluginDir := filepath.Join(dir, "plugins", "codex")
+		pluginDir := filepath.Join(dir, "ext", "plugins", "codex")
 		require.NoError(t, os.MkdirAll(pluginDir, 0755))
 		require.NoError(t, os.WriteFile(filepath.Join(pluginDir, "runtime.yaml"), []byte(`
 name: codex
@@ -102,10 +102,10 @@ func TestResolveInlineRuntime(t *testing.T) {
 func TestResolveFeature(t *testing.T) {
 	t.Run("resolves from local plugins dir", func(t *testing.T) {
 		dir := t.TempDir()
-		pluginDir := filepath.Join(dir, "plugins", "home-version-control")
+		pluginDir := filepath.Join(dir, "ext", "plugins", "custom-runtime")
 		require.NoError(t, os.MkdirAll(pluginDir, 0755))
 		require.NoError(t, os.WriteFile(filepath.Join(pluginDir, "feature.yaml"), []byte(`
-name: home-version-control
+name: custom-runtime
 description: test feature
 `), 0644))
 
@@ -116,7 +116,7 @@ description: test feature
 			"home_override":   "home",
 		}
 
-		contrib, err := ResolveFeature(dir, "home-version-control", userConfig)
+		contrib, err := ResolveFeature(dir, "custom-runtime", userConfig)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"apt-get install -y ripgrep"}, contrib.Commands)
 		assert.Equal(t, []string{"scripts/setup.sh"}, contrib.EntrypointHooks)
@@ -124,15 +124,6 @@ description: test feature
 		assert.Equal(t, "home", contrib.HomeOverride)
 	})
 
-	t.Run("resolves embedded feature", func(t *testing.T) {
-		userConfig := map[string]any{
-			"commands": []any{"apt-get install -y git"},
-		}
-
-		contrib, err := ResolveFeature("/nonexistent", "home-version-control", userConfig)
-		require.NoError(t, err)
-		assert.Equal(t, []string{"apt-get install -y git"}, contrib.Commands)
-	})
 
 	t.Run("unknown feature", func(t *testing.T) {
 		_, err := ResolveFeature("/nonexistent", "unknown-feature", map[string]any{})
@@ -141,7 +132,7 @@ description: test feature
 
 	t.Run("empty config", func(t *testing.T) {
 		dir := t.TempDir()
-		pluginDir := filepath.Join(dir, "plugins", "minimal")
+		pluginDir := filepath.Join(dir, "ext", "plugins", "minimal")
 		require.NoError(t, os.MkdirAll(pluginDir, 0755))
 		require.NoError(t, os.WriteFile(filepath.Join(pluginDir, "feature.yaml"), []byte(`
 name: minimal
