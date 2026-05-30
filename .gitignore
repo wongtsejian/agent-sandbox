@@ -1,0 +1,23 @@
+# Binaries
+/agent-sandbox
+*.exe
+
+# Build artifacts
+.build/
+dist/
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
