@@ -3,43 +3,18 @@ package generate
 import (
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
-	sandbox "github.com/donbader/agent-sandbox"
-	"gopkg.in/yaml.v3"
+	"github.com/donbader/agent-sandbox/internal/resolve"
 )
-
-// featureSchema represents a parsed feature.yaml with config_schema.
-type featureSchema struct {
-	Name         string       `yaml:"name"`
-	Description  string       `yaml:"description"`
-	ConfigSchema configSchema `yaml:"config_schema"`
-}
-
-type configSchema struct {
-	Properties map[string]schemaProperty `yaml:"properties"`
-}
-
-type schemaProperty struct {
-	Type        string       `yaml:"type"`
-	Description string       `yaml:"description"`
-	Items       *schemaItems `yaml:"items"`
-}
-
-type schemaItems struct {
-	Type string `yaml:"type"`
-}
 
 // writeSchema generates .build/schema.json — a JSON Schema for agent.yaml.
 // This enables VSCode YAML extension autocompletion and validation.
 func (g *Generator) writeSchema() error {
-	schema, err := buildAgentSchema()
-	if err != nil {
-		return fmt.Errorf("building schema: %w", err)
-	}
+	schema := buildAgentSchema()
 
 	data, err := json.MarshalIndent(schema, "", "  ")
 	if err != nil {
@@ -51,11 +26,8 @@ func (g *Generator) writeSchema() error {
 }
 
 // buildAgentSchema generates a JSON Schema describing agent.yaml format.
-func buildAgentSchema() (map[string]any, error) {
-	featureSchemas, err := collectFeatureSchemas()
-	if err != nil {
-		return nil, err
-	}
+func buildAgentSchema() map[string]any {
+	featureSchemas := collectFeatureSchemas()
 
 	schema := map[string]any{
 		"$schema": "http://json-schema.org/draft-07/schema#",
@@ -85,66 +57,74 @@ func buildAgentSchema() (map[string]any, error) {
 		"required": []string{"name", "runtime"},
 	}
 
-	return schema, nil
+	return schema
 }
 
-// collectFeatureSchemas reads all embedded plugin feature.yaml files and extracts their config_schema.
-func collectFeatureSchemas() (map[string]any, error) {
+// collectFeatureSchemas uses reflection on registered plugins' ConfigType()
+// to generate JSON Schema for each plugin's configuration.
+func collectFeatureSchemas() map[string]any {
 	schemas := map[string]any{}
-
-	entries, err := fs.ReadDir(sandbox.CorePlugins, "internal/plugins")
-	if err != nil {
-		return nil, fmt.Errorf("reading embedded plugins: %w", err)
+	for name, plugin := range resolve.RegisteredPlugins() {
+		configType := plugin.ConfigType()
+		schema := structToJSONSchema(configType)
+		if schema != nil {
+			schemas[name] = schema
+		}
 	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		featurePath := filepath.Join("internal/plugins", entry.Name(), "feature.yaml")
-		data, err := sandbox.CorePlugins.ReadFile(featurePath)
-		if err != nil {
-			continue // not a feature plugin (e.g., runtime-only)
-		}
-
-		var feat featureSchema
-		if err := yaml.Unmarshal(data, &feat); err != nil {
-			continue
-		}
-
-		if len(feat.ConfigSchema.Properties) == 0 {
-			continue
-		}
-
-		schemas[entry.Name()] = convertToJSONSchema(feat.ConfigSchema, feat.Description)
-	}
-
-	return schemas, nil
+	return schemas
 }
 
-// convertToJSONSchema converts a feature's config_schema to JSON Schema format.
-func convertToJSONSchema(cs configSchema, description string) map[string]any {
-	props := map[string]any{}
-	for name, prop := range cs.Properties {
-		jsonProp := map[string]any{
-			"type": prop.Type,
-		}
-		if prop.Description != "" {
-			jsonProp["description"] = prop.Description
-		}
-		if prop.Type == "array" && prop.Items != nil {
-			jsonProp["items"] = map[string]any{"type": prop.Items.Type}
-		}
-		props[name] = jsonProp
+// structToJSONSchema converts a struct to JSON Schema using reflection and struct tags.
+func structToJSONSchema(v any) map[string]any {
+	if v == nil {
+		return nil
+	}
+	t := reflect.TypeOf(v)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
+	if t.NumField() == 0 {
+		return nil
 	}
 
-	result := map[string]any{
+	props := map[string]any{}
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		yamlTag := field.Tag.Get("yaml")
+		if yamlTag == "" || yamlTag == "-" {
+			continue
+		}
+		name := strings.Split(yamlTag, ",")[0]
+
+		prop := map[string]any{}
+		switch field.Type.Kind() {
+		case reflect.String:
+			prop["type"] = "string"
+		case reflect.Slice:
+			prop["type"] = "array"
+			if field.Type.Elem().Kind() == reflect.String {
+				prop["items"] = map[string]any{"type": "string"}
+			}
+		case reflect.Bool:
+			prop["type"] = "boolean"
+		case reflect.Int, reflect.Int64:
+			prop["type"] = "integer"
+		default:
+			prop["type"] = "object"
+		}
+
+		if desc := field.Tag.Get("schema"); desc != "" {
+			prop["description"] = desc
+		}
+
+		props[name] = prop
+	}
+
+	return map[string]any{
 		"type":       "object",
 		"properties": props,
 	}
-	if description != "" {
-		result["description"] = strings.TrimSpace(description)
-	}
-	return result
 }
