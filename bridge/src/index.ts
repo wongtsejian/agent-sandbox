@@ -3,6 +3,10 @@ import { AcpAgent } from "./acp-client.js";
 import { channels } from "./channel/channels.gen.js";
 import type { Channel } from "./channel/types.js";
 import { createLogger } from "./logger.js";
+import { ExtensionRegistry } from "./extension.js";
+import type { ExtensionContext } from "./extension.js";
+import perfPlugin from "./extensions/perf-tracker.js";
+import eventLoggerPlugin from "./extensions/event-logger.js";
 
 const log = createLogger("bridge");
 
@@ -38,6 +42,16 @@ async function main(): Promise<void> {
   }
   const channel: Channel = new ChannelClass(config);
 
+  // Set up plugin registry
+  const registry = new ExtensionRegistry();
+  registry.register(perfPlugin);
+  registry.register(eventLoggerPlugin);
+
+  const ctx: ExtensionContext = {
+    sendMessage: (chatId, text) => channel.sendMessage(chatId, text),
+    config: config as Record<string, unknown>,
+  };
+
   log.info(
     { channel: config.channel, cmd: config.acp_command.join(" ") },
     "starting channel"
@@ -52,20 +66,60 @@ async function main(): Promise<void> {
     log.error({ error: err }, "ACP agent failed to start (will retry on next message)");
   });
 
-  // Wire channel → agent
+  // Wire channel → agent (with plugin command routing)
   channel.onMessage((chatId, text) => {
+    if (text.startsWith("/")) {
+      const spaceIdx = text.indexOf(" ");
+      const cmd = spaceIdx === -1 ? text.slice(1) : text.slice(1, spaceIdx);
+      const args = spaceIdx === -1 ? "" : text.slice(spaceIdx + 1).trim();
+
+      // /help always generates a dynamic list of all registered commands
+      if (cmd === "help") {
+        const names = registry.getCommandNames();
+        const lines = ["Available commands:", ""];
+        for (const name of names) {
+          const handler = registry.getCommand(name);
+          lines.push(`/${name}${handler?.description ? ` — ${handler.description}` : ""}`);
+        }
+        channel.sendMessage(chatId, lines.join("\n"));
+        return;
+      }
+
+      const handler = registry.getCommand(cmd);
+      if (handler) {
+        handler
+          .handler(ctx, chatId, args)
+          .then((response) => {
+            if (response) channel.sendMessage(chatId, response);
+          })
+          .catch((err: unknown) => {
+            log.error({ error: err, chatId, cmd }, "command handler failed");
+            channel.sendMessage(chatId, "Command failed.");
+          });
+      } else {
+        channel.sendMessage(chatId, `Unknown command: /${cmd}`);
+      }
+      return;
+    }
+
+    registry.notifyTurnStart(ctx, chatId);
     agent
       .prompt(text)
       .then((response) => {
+        registry.notifyTurnEnd(ctx, chatId);
         channel.sendMessage(chatId, response);
       })
       .catch((err: unknown) => {
+        registry.notifyTurnEnd(ctx, chatId);
         log.error({ error: err, chatId }, "agent prompt failed");
       });
   });
 
   // Start channel
   await channel.start();
+
+  // Boot plugins after channel is ready
+  await registry.boot(ctx);
 
   // Handle shutdown
   process.on("SIGTERM", () => {
