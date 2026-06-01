@@ -343,7 +343,7 @@ func TestGenerator_Run(t *testing.T) {
 		dfAgentStr := string(dfAgent)
 		assert.Contains(t, dfAgentStr, "FROM node:22-slim")
 		assert.Contains(t, dfAgentStr, "iproute2")
-		assert.NotContains(t, dfAgentStr, "iptables")
+		assert.Contains(t, dfAgentStr, "iptables")
 		assert.Contains(t, dfAgentStr, "useradd -m -s /bin/bash agent")
 		assert.Contains(t, dfAgentStr, `ENTRYPOINT ["/opt/entrypoint.sh"]`)
 		assert.NotContains(t, dfAgentStr, "useradd -r -s /bin/false gateway")
@@ -488,7 +488,7 @@ func TestGenerator_Run(t *testing.T) {
 		require.NoError(t, err)
 		bridgeCfgStr := string(bridgeCfg)
 		assert.Contains(t, bridgeCfgStr, `"channel": "telegram"`)
-		assert.Contains(t, bridgeCfgStr, `"agent_cmd"`)
+		assert.Contains(t, bridgeCfgStr, `"acp_command"`)
 		assert.Contains(t, bridgeCfgStr, `"access_control"`)
 		assert.Contains(t, bridgeCfgStr, `"allowed_users"`)
 
