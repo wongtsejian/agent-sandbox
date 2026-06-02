@@ -298,7 +298,7 @@ func TestGenerator_Run(t *testing.T) {
 		gwDir := filepath.Join(srcDir, "gateway")
 		require.NoError(t, os.MkdirAll(filepath.Join(gwDir, "cmd", "gateway"), 0755))
 		require.NoError(t, os.MkdirAll(filepath.Join(gwDir, "internal", "proxy"), 0755))
-		require.NoError(t, os.WriteFile(filepath.Join(gwDir, "go.mod"), []byte("module gateway\ngo 1.24\n"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(gwDir, "go.mod"), []byte("module gateway\ngo 1.26\n"), 0644))
 		require.NoError(t, os.WriteFile(filepath.Join(gwDir, "cmd", "gateway", "main.go"), []byte("package main\nfunc main() {}\n"), 0644))
 
 		g := &Generator{
@@ -315,7 +315,7 @@ func TestGenerator_Run(t *testing.T) {
 			},
 			Gateway: true,
 			GatewaySpec: GatewaySpec{
-				BuildImage: "golang:1.24-alpine",
+				BuildImage: "golang:1.26-alpine",
 				BinaryPath: "/gateway",
 				ListenPort: 8443,
 				DNSPort:    5353,
@@ -331,7 +331,7 @@ func TestGenerator_Run(t *testing.T) {
 		dfGw, err := os.ReadFile(filepath.Join(outDir, "Dockerfile.gateway"))
 		require.NoError(t, err)
 		dfGwStr := string(dfGw)
-		assert.Contains(t, dfGwStr, "FROM golang:1.24-alpine AS builder")
+		assert.Contains(t, dfGwStr, "FROM golang:1.26-alpine AS builder")
 		assert.Contains(t, dfGwStr, "COPY gateway-src/ .")
 		assert.Contains(t, dfGwStr, "RUN go mod tidy && go build -o /gateway ./cmd/gateway/")
 		assert.Contains(t, dfGwStr, "COPY --from=builder /gateway /usr/local/bin/gateway")
@@ -396,7 +396,7 @@ func TestGenerator_Run(t *testing.T) {
 		// Create minimal gateway source in the project dir
 		gwDir := filepath.Join(srcDir, "gateway")
 		require.NoError(t, os.MkdirAll(filepath.Join(gwDir, "cmd", "gateway"), 0755))
-		require.NoError(t, os.WriteFile(filepath.Join(gwDir, "go.mod"), []byte("module gateway\ngo 1.24\n"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(gwDir, "go.mod"), []byte("module gateway\ngo 1.26\n"), 0644))
 		require.NoError(t, os.WriteFile(filepath.Join(gwDir, "cmd", "gateway", "main.go"), []byte("package main\nfunc main() {}\n"), 0644))
 
 		g := &Generator{
@@ -427,7 +427,7 @@ func TestGenerator_Run(t *testing.T) {
 			Gateway: true,
 			ChannelManager:  true,
 			GatewaySpec: GatewaySpec{
-				BuildImage: "golang:1.24-alpine",
+				BuildImage: "golang:1.26-alpine",
 				BinaryPath: "/gateway",
 				ListenPort: 8443,
 				DNSPort:    5353,
@@ -529,7 +529,7 @@ func TestGenerator_DockerfileLayerOrder(t *testing.T) {
 		// Create minimal gateway source
 		gwDir := filepath.Join(srcDir, "gateway")
 		require.NoError(t, os.MkdirAll(filepath.Join(gwDir, "cmd", "gateway"), 0755))
-		require.NoError(t, os.WriteFile(filepath.Join(gwDir, "go.mod"), []byte("module gateway\ngo 1.24\n"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(gwDir, "go.mod"), []byte("module gateway\ngo 1.26\n"), 0644))
 		require.NoError(t, os.WriteFile(filepath.Join(gwDir, "cmd", "gateway", "main.go"), []byte("package main\nfunc main() {}\n"), 0644))
 
 		g := &Generator{
@@ -560,7 +560,7 @@ func TestGenerator_DockerfileLayerOrder(t *testing.T) {
 			Gateway:        true,
 			ChannelManager: true,
 			GatewaySpec: GatewaySpec{
-				BuildImage: "golang:1.24-alpine",
+				BuildImage: "golang:1.26-alpine",
 				BinaryPath: "/gateway",
 				ListenPort: 8443,
 				DNSPort:    5353,

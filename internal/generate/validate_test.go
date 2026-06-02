@@ -89,7 +89,7 @@ func TestValidate(t *testing.T) {
 		g.Gateway = true
 		g.ChannelManager = true
 		g.GatewaySpec = GatewaySpec{
-			BuildImage: "golang:1.24-alpine",
+			BuildImage: "golang:1.26-alpine",
 			BinaryPath: "/gateway",
 			ListenPort: 8443,
 			DNSPort:    5353,
@@ -114,7 +114,7 @@ func TestValidate(t *testing.T) {
 	t.Run("gateway enabled but GatewaySpec.ListenPort is 0", func(t *testing.T) {
 		g := validGenerator()
 		g.Gateway = true
-		g.GatewaySpec = GatewaySpec{BuildImage: "golang:1.24-alpine", BinaryPath: "/gateway", DNSPort: 5353}
+		g.GatewaySpec = GatewaySpec{BuildImage: "golang:1.26-alpine", BinaryPath: "/gateway", DNSPort: 5353}
 		assert.ErrorContains(t, g.validate(), "GatewaySpec.ListenPort")
 	})
 

@@ -165,7 +165,7 @@ func generateAgent(dir, outDir string, cfg *config.AgentConfig, _ *config.Shared
 		ChannelManager: hasChannelManager,
 		SkipEnvExample: skipEnvExample,
 		GatewaySpec: generate.GatewaySpec{
-			BuildImage: "golang:1.24-alpine",
+			BuildImage: "golang:1.26-alpine",
 			BinaryPath: "/gateway",
 			ListenPort: 8443,
 			DNSPort:    53,
