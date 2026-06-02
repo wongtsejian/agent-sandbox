@@ -22,6 +22,7 @@ type Generator struct {
 	Features    []*resolve.FeatureContributions
 	Gateway     bool        // include gateway (transparent proxy)
 	ChannelManager bool        // include channel manager (message relay)
+	SkipEnvExample bool       // skip per-agent .env.example (fleet mode writes one at root)
 	GatewaySpec GatewaySpec // injected build spec
 	ChannelManagerSpec  ChannelManagerSpec  // injected build spec
 	Dir         string      // source directory (where agent.yaml lives)
@@ -147,8 +148,10 @@ func (g *Generator) Run() error {
 		return err
 	}
 
-	if err := g.writeEnvExample(); err != nil {
-		return err
+	if !g.SkipEnvExample {
+		if err := g.writeEnvExample(); err != nil {
+			return err
+		}
 	}
 
 	if err := g.writeSchema(); err != nil {
@@ -792,6 +795,26 @@ func (g *Generator) collectNamedVolumes(volumes []string) []string {
 
 // scanEnvVars finds all ${VAR} references in the agent config (recursively).
 var envVarPattern = regexp.MustCompile(`\$\{([A-Z_][A-Z0-9_]*)\}`)
+
+// ScanConfigEnvVars finds all ${VAR} references in the given feature entries.
+// Exported for use by fleet-level .env.example generation.
+func ScanConfigEnvVars(features []config.FeatureEntry) []string {
+	sources := map[string][]string{}
+	var order []string
+
+	for i, entry := range features {
+		source := fmt.Sprintf("features[%d]", i)
+		if entry.Name != "" {
+			source = entry.Name
+		}
+		for key, v := range entry.Config {
+			scanValueWithSource(v, envVarPattern, sources, &order,
+				fmt.Sprintf("feature:%s.%s", source, key))
+		}
+	}
+
+	return order
+}
 
 func (g *Generator) scanEnvVars() []string {
 	sources := map[string][]string{} // var name → list of sources

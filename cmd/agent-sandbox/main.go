@@ -69,7 +69,7 @@ func generateSingle(dir string) error {
 		return err
 	}
 
-	if err := generateAgent(dir, outDir, cfg, nil); err != nil {
+	if err := generateAgent(dir, outDir, cfg, nil, false); err != nil {
 		return err
 	}
 
@@ -88,8 +88,10 @@ func generateFleet(dir string) error {
 		return fmt.Errorf("creating output dir: %w", err)
 	}
 
-	// Generate each agent into its own subdirectory
+	// Generate each agent into its own subdirectory, collecting env vars for fleet .env.example
 	var agentNames []string
+	seen := map[string]bool{}
+	var allEnvVars []string
 	for _, agentName := range fleet.Agents {
 		agentDir := filepath.Join(dir, agentName)
 		agentOutDir := filepath.Join(outDir, agentName)
@@ -102,7 +104,15 @@ func generateFleet(dir string) error {
 		// Merge shared features
 		cfg.Features = config.MergeSharedFeatures(fleet.Shared.Features, cfg.Features)
 
-		if err := generateAgent(agentDir, agentOutDir, cfg, &fleet.Shared); err != nil {
+		// Collect env vars from this agent's merged config
+		for _, v := range generate.ScanConfigEnvVars(cfg.Features) {
+			if !seen[v] {
+				seen[v] = true
+				allEnvVars = append(allEnvVars, v)
+			}
+		}
+
+		if err := generateAgent(agentDir, agentOutDir, cfg, &fleet.Shared, true); err != nil {
 			return fmt.Errorf("agent %q: %w", agentName, err)
 		}
 		agentNames = append(agentNames, agentName)
@@ -113,11 +123,16 @@ func generateFleet(dir string) error {
 		return err
 	}
 
+	// Generate fleet-level .env.example (single file at fleet root)
+	if err := writeFleetEnvExample(dir, allEnvVars); err != nil {
+		return err
+	}
+
 	fmt.Printf("Generated fleet artifacts in %s (%d agents)\n", outDir, len(agentNames))
 	return nil
 }
 
-func generateAgent(dir, outDir string, cfg *config.AgentConfig, _ *config.SharedBlock) error {
+func generateAgent(dir, outDir string, cfg *config.AgentConfig, _ *config.SharedBlock, skipEnvExample bool) error {
 	// Resolve runtime
 	rt, err := resolve.ResolveRuntime(dir, cfg.Runtime)
 	if err != nil {
@@ -148,6 +163,7 @@ func generateAgent(dir, outDir string, cfg *config.AgentConfig, _ *config.Shared
 		Features:       features,
 		Gateway:        cfg.GatewayEnabled(),
 		ChannelManager: hasChannelManager,
+		SkipEnvExample: skipEnvExample,
 		GatewaySpec: generate.GatewaySpec{
 			BuildImage: "golang:1.24-alpine",
 			BinaryPath: "/gateway",
@@ -180,6 +196,24 @@ func writeFleetCompose(outDir string, agents []string) error {
 
 	composePath := filepath.Join(outDir, "docker-compose.yml")
 	return os.WriteFile(composePath, []byte(b.String()), 0644)
+}
+
+// writeFleetEnvExample generates a single .env.example at the fleet root
+// containing all env vars from all agents.
+func writeFleetEnvExample(dir string, envVars []string) error {
+	if len(envVars) == 0 {
+		return nil
+	}
+
+	var b strings.Builder
+	b.WriteString("# Environment variables for agent-sandbox fleet\n")
+	b.WriteString("# Copy to .env and fill in values\n\n")
+	for _, v := range envVars {
+		b.WriteString(fmt.Sprintf("%s=\n", v))
+	}
+
+	path := filepath.Join(dir, ".env.example")
+	return os.WriteFile(path, []byte(b.String()), 0644)
 }
 
 func composeCmd(dir *string) *cobra.Command {
