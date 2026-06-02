@@ -404,7 +404,7 @@ func TestGenerator_Run(t *testing.T) {
 				Name:    "coder",
 				Runtime: "codex",
 				Features: []config.FeatureEntry{
-					{Plugin: "telegram", Config: map[string]any{"access_control": map[string]any{"allowed_users": []any{"@testuser"}, "require_mention": false}}},
+					{Plugin: "telegram", Config: map[string]any{"bot_token": "${TELEGRAM_BOT_TOKEN}", "access_control": map[string]any{"allowed_users": []any{"@testuser"}, "require_mention": false}}},
 				},
 			},
 			Runtime: &resolve.RuntimeConfig{
@@ -418,8 +418,10 @@ func TestGenerator_Run(t *testing.T) {
 				{
 					MITMDomains:   []string{"api.telegram.org"},
 					ChannelName: "telegram",
-					EnvVars:       []string{"TELEGRAM_BOT_TOKEN"},
 					ChannelConfig:  map[string]any{"access_control": map[string]any{"allowed_users": []any{"@testuser"}}},
+					Rewriters: []resolve.RewriterConfig{
+						{Type: "telegram-url", Domains: []string{"api.telegram.org"}, EnvVar: "TELEGRAM_BOT_TOKEN"},
+					},
 				},
 			},
 			Gateway: true,

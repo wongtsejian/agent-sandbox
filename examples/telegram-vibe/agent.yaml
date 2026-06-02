@@ -4,6 +4,7 @@ runtime: codex
 log_level: debug
 features:
   - plugin: telegram
+    bot_token: ${TELEGRAM_BOT_TOKEN}
     access_control:
       allowed_users: ["@${TELEGRAM_USERNAME}"]
       require_mention: false
@@ -13,7 +14,7 @@ features:
     domains: ["agent-gateway.stx-ai.net"]
     header: "Authorization"
     value_format: "Bearer ${value}"
-    env_var: "STX_LLM_GATEWAY_API_KEY"
+    secret: "${STX_LLM_GATEWAY_API_KEY}"
 
   - plugin: custom-runtime
     home_override: "./home"

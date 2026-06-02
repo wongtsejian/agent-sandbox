@@ -793,12 +793,6 @@ func (g *Generator) collectNamedVolumes(volumes []string) []string {
 // scanEnvVars finds all ${VAR} references in the agent config (recursively).
 var envVarPattern = regexp.MustCompile(`\$\{([A-Z_][A-Z0-9_]*)\}`)
 
-// envVarSource tracks where an env var was found.
-type envVarSource struct {
-	Name    string
-	Sources []string // e.g., "feature:telegram.allowed_chat_ids", "plugin:telegram"
-}
-
 func (g *Generator) scanEnvVars() []string {
 	sources := map[string][]string{} // var name → list of sources
 	var order []string               // preserve insertion order
@@ -812,16 +806,6 @@ func (g *Generator) scanEnvVars() []string {
 		for key, v := range entry.Config {
 			scanValueWithSource(v, envVarPattern, sources, &order,
 				fmt.Sprintf("feature:%s.%s", source, key))
-		}
-	}
-
-	// Collect EnvVars from feature plugin contributions
-	for _, f := range g.Features {
-		for _, v := range f.EnvVars {
-			if _, exists := sources[v]; !exists {
-				order = append(order, v)
-			}
-			sources[v] = append(sources[v], fmt.Sprintf("plugin:%s", f.Name))
 		}
 	}
 
@@ -921,39 +905,9 @@ func (g *Generator) collectMITMDomains() []string {
 	return domains
 }
 
-// mergedEnvVars returns all env vars (from config ${VAR} references + feature plugin declarations),
-// deduplicated and in stable order.
+// mergedEnvVars returns all env vars from config ${VAR} references, deduplicated and in stable order.
 func (g *Generator) mergedEnvVars() []string {
-	envVars := g.scanEnvVars()
-	featureEnvVars := g.collectFeatureEnvVars()
-	for _, v := range featureEnvVars {
-		found := false
-		for _, existing := range envVars {
-			if existing == v {
-				found = true
-				break
-			}
-		}
-		if !found {
-			envVars = append(envVars, v)
-		}
-	}
-	return envVars
-}
-
-// collectFeatureEnvVars gathers all env vars declared by features.
-func (g *Generator) collectFeatureEnvVars() []string {
-	var vars []string
-	seen := map[string]bool{}
-	for _, f := range g.Features {
-		for _, v := range f.EnvVars {
-			if !seen[v] {
-				seen[v] = true
-				vars = append(vars, v)
-			}
-		}
-	}
-	return vars
+	return g.scanEnvVars()
 }
 
 // writeChannelManagerSource writes the embedded channel-manager source to .build/channel-manager-src/,

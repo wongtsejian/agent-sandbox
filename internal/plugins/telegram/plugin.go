@@ -4,11 +4,14 @@
 package telegram
 
 import (
+	"fmt"
+
 	"github.com/donbader/agent-sandbox/internal/resolve"
 )
 
 // Config defines the typed configuration for the telegram plugin.
 type Config struct {
+	BotToken      string       `yaml:"bot_token" schema:"Telegram bot token (use ${VAR} reference)" required:"true" examples:"${TELEGRAM_BOT_TOKEN}"`
 	AccessControl AccessControl `yaml:"access_control" schema:"Access control settings for the Telegram bot" required:"true"`
 	AckEmoji      *string       `yaml:"ack_emoji" schema:"Emoji reaction to acknowledge received messages" default:"👀"`
 }
@@ -28,21 +31,28 @@ type GroupACL struct {
 
 func init() {
 	resolve.Register("telegram", func(_ string, cfg Config) (*resolve.FeatureContributions, error) {
+		if cfg.BotToken == "" {
+			return nil, fmt.Errorf("telegram: missing required option 'bot_token'")
+		}
+		envVar, ok := resolve.ExtractEnvVar(cfg.BotToken)
+		if !ok {
+			return nil, fmt.Errorf("telegram: bot_token must be a ${VAR} reference, got %q", cfg.BotToken)
+		}
+
 		channelConfig := map[string]any{"access_control": cfg.AccessControl}
 		if cfg.AckEmoji != nil {
 			channelConfig["ack_emoji"] = *cfg.AckEmoji
 		}
 		return &resolve.FeatureContributions{
-			Name:          "telegram",
-			MITMDomains:   []string{"api.telegram.org"},
+			Name:        "telegram",
+			MITMDomains: []string{"api.telegram.org"},
 			ChannelName: "telegram",
-			EnvVars:       []string{"TELEGRAM_BOT_TOKEN"},
-			ChannelConfig:  channelConfig,
+			ChannelConfig: channelConfig,
 			Rewriters: []resolve.RewriterConfig{
 				{
 					Type:    "telegram-url",
 					Domains: []string{"api.telegram.org"},
-					EnvVar:  "TELEGRAM_BOT_TOKEN",
+					EnvVar:  envVar,
 				},
 			},
 		}, nil

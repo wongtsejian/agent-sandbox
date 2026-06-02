@@ -4,78 +4,65 @@ import (
 	"testing"
 
 	"github.com/donbader/agent-sandbox/internal/resolve"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGitHubPATPlugin_DefaultDomains(t *testing.T) {
+	config := map[string]any{
+		"token": "${GITHUB_PAT}",
+	}
+
 	plugin := resolve.RegisteredPlugins()["github-pat"]
-	if plugin == nil {
-		t.Fatal("github-pat plugin not registered")
-	}
+	require.NotNil(t, plugin, "github-pat plugin not registered")
 
-	contrib, err := plugin.Resolve("", map[string]any{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	contrib, err := plugin.Resolve("", config)
+	require.NoError(t, err)
 
-	wantDomains := []string{"api.github.com", "github.com"}
-	if len(contrib.MITMDomains) != len(wantDomains) {
-		t.Fatalf("expected MITMDomains %v, got %v", wantDomains, contrib.MITMDomains)
-	}
-	for i, d := range wantDomains {
-		if contrib.MITMDomains[i] != d {
-			t.Errorf("MITMDomains[%d]: expected %q, got %q", i, d, contrib.MITMDomains[i])
-		}
-	}
+	assert.Equal(t, []string{"api.github.com", "github.com"}, contrib.MITMDomains)
+	assert.Equal(t, []string{"GH_TOKEN=dummy", "GITHUB_TOKEN=dummy"}, contrib.AgentEnv)
 
-	if len(contrib.EnvVars) != 1 || contrib.EnvVars[0] != "GITHUB_TOKEN" {
-		t.Errorf("expected EnvVars=[GITHUB_TOKEN], got %v", contrib.EnvVars)
-	}
-
-	wantAgentEnv := []string{"GH_TOKEN=dummy", "GITHUB_TOKEN=dummy"}
-	if len(contrib.AgentEnv) != len(wantAgentEnv) {
-		t.Fatalf("expected AgentEnv %v, got %v", wantAgentEnv, contrib.AgentEnv)
-	}
-	for i, e := range wantAgentEnv {
-		if contrib.AgentEnv[i] != e {
-			t.Errorf("AgentEnv[%d]: expected %q, got %q", i, e, contrib.AgentEnv[i])
-		}
-	}
-
-	if len(contrib.Rewriters) != 1 {
-		t.Fatalf("expected 1 rewriter, got %d", len(contrib.Rewriters))
-	}
+	require.Len(t, contrib.Rewriters, 1)
 	rw := contrib.Rewriters[0]
-	if rw.Type != "auth-header" {
-		t.Errorf("expected rewriter type %q, got %q", "auth-header", rw.Type)
-	}
-	if rw.Header != "Authorization" {
-		t.Errorf("expected header %q, got %q", "Authorization", rw.Header)
-	}
-	if rw.ValueFormat != "Basic ${base64_basic}" {
-		t.Errorf("expected value_format %q, got %q", "Basic ${base64_basic}", rw.ValueFormat)
-	}
-	if rw.EnvVar != "GITHUB_TOKEN" {
-		t.Errorf("expected env_var %q, got %q", "GITHUB_TOKEN", rw.EnvVar)
-	}
+	assert.Equal(t, "auth-header", rw.Type)
+	assert.Equal(t, "Authorization", rw.Header)
+	assert.Equal(t, "Basic ${base64_basic}", rw.ValueFormat)
+	assert.Equal(t, "GITHUB_PAT", rw.EnvVar)
 }
 
 func TestGitHubPATPlugin_CustomDomains(t *testing.T) {
-	plugin := resolve.RegisteredPlugins()["github-pat"]
-	if plugin == nil {
-		t.Fatal("github-pat plugin not registered")
-	}
-
-	contrib, err := plugin.Resolve("", map[string]any{
+	config := map[string]any{
+		"token":   "${GITHUB_PAT}",
 		"domains": []any{"api.github.com"},
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 
-	if len(contrib.MITMDomains) != 1 || contrib.MITMDomains[0] != "api.github.com" {
-		t.Errorf("expected MITMDomains=[api.github.com], got %v", contrib.MITMDomains)
-	}
-	if len(contrib.Rewriters) != 1 || len(contrib.Rewriters[0].Domains) != 1 || contrib.Rewriters[0].Domains[0] != "api.github.com" {
-		t.Errorf("expected rewriter domains=[api.github.com], got %v", contrib.Rewriters)
-	}
+	plugin := resolve.RegisteredPlugins()["github-pat"]
+	require.NotNil(t, plugin, "github-pat plugin not registered")
+
+	contrib, err := plugin.Resolve("", config)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"api.github.com"}, contrib.MITMDomains)
+	require.Len(t, contrib.Rewriters, 1)
+	assert.Equal(t, []string{"api.github.com"}, contrib.Rewriters[0].Domains)
+}
+
+func TestGitHubPATPlugin_ErrorsWithoutToken(t *testing.T) {
+	plugin := resolve.RegisteredPlugins()["github-pat"]
+	require.NotNil(t, plugin, "github-pat plugin not registered")
+
+	_, err := plugin.Resolve("", map[string]any{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing required option 'token'")
+}
+
+func TestGitHubPATPlugin_ErrorsWithLiteralToken(t *testing.T) {
+	plugin := resolve.RegisteredPlugins()["github-pat"]
+	require.NotNil(t, plugin, "github-pat plugin not registered")
+
+	_, err := plugin.Resolve("", map[string]any{
+		"token": "ghp_1234567890",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be a ${VAR} reference")
 }

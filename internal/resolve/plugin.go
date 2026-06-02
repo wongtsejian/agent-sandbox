@@ -2,9 +2,23 @@ package resolve
 
 import (
 	"fmt"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
+
+// envVarRefPattern matches a ${VAR} reference.
+var envVarRefPattern = regexp.MustCompile(`^\$\{([A-Z_][A-Z0-9_]*)\}$`)
+
+// ExtractEnvVar extracts the environment variable name from a "${VAR}" reference.
+// Returns the var name and true if the input is a valid reference, or ("", false) otherwise.
+func ExtractEnvVar(ref string) (string, bool) {
+	m := envVarRefPattern.FindStringSubmatch(ref)
+	if len(m) != 2 {
+		return "", false
+	}
+	return m[1], true
+}
 
 // FeaturePlugin defines the interface that feature plugins implement.
 // The generic Register function wraps typed plugins into this interface.
@@ -38,7 +52,6 @@ type FeatureContributions struct {
 	HomeOverride    string           // directory to copy into home on start
 	MITMDomains     []string         // domains the gateway should MITM (terminate TLS)
 	ChannelName   string           // channel type (e.g., "telegram")
-	EnvVars         []string         // environment variables (added to .env.example and compose)
 	AgentEnv        []string         // environment variables for agent container (dummy values, not secrets)
 	ChannelConfig    map[string]any   // plugin-specific config passed to channel-manager-config.json
 	Rewriters       []RewriterConfig // gateway rewriters to instantiate for this feature
