@@ -6,8 +6,8 @@
 agent-sandbox generate
   │
   ├── Detect mode: agent.yaml (single) or fleet.yaml (multi)
-  ├── Read runtime plugin: plugins/<runtime>/runtime.yaml
-  ├── Read feature plugins: plugins/<feature>/feature.yaml (for each)
+  ├── Read runtime plugin: internal/plugins/<runtime>/runtime.yaml
+  ├── Read feature plugins: registered via init() in internal/plugins/<feature>/plugin.go
   ├── Merge shared features (if fleet mode)
   │
   └── Generate .build/:
@@ -135,20 +135,19 @@ CMD ["sleep", "infinity"]
 | Built-in plugin YAML | runtime.yaml + feature.yaml defaults | ~10KB |
 | Entrypoint template | Shell script template | ~2KB |
 
-Gateway handlers (per-feature Go code) are NOT embedded in CLI. They live in plugin directories and are copied to `.build/gateway-src/` at generate time.
+Gateway handlers (per-feature Go code) are part of the gateway core module (`gateway/internal/mitm/`). They are compiled along with the gateway core during Docker build.
 
 ## Gateway Compilation
 
 The gateway binary is compiled during Docker build, not CLI build:
 
 1. CLI extracts gateway core source to `.build/gateway-src/`
-2. CLI copies active feature `gateway/` dirs into `.build/gateway-src/handlers/`
-3. CLI generates `handlers_registry.go` (imports active handlers)
-4. Docker multi-stage compiles everything into one binary
+2. CLI generates `gateway-config.yaml` with rewriter rules from active feature plugins
+3. Docker multi-stage compiles gateway binary into one binary
+4. Config-driven rewriter types (`telegram-url`, `auth-header`) are instantiated at runtime from `gateway-config.yaml`
 
 This means:
-- Gateway handler fixes = edit local `plugins/<name>/gateway/`, rebuild container
-- No CLI upgrade needed for gateway fixes
+- Gateway config changes = re-run `agent-sandbox generate`, rebuild container
 - User doesn't need Go installed (Docker handles compilation)
 
 ## Channel Manager Loading
@@ -207,34 +206,4 @@ agent-sandbox/
   channel-manager/          ← Channel manager runtime TypeScript (embedded in CLI)
     package.json
     src/index.ts, agent.ts, plugin-loader.ts, types.ts
-
-  internal/
-    plugins/               ← Core plugins (embedded in CLI)
-      codex/
-        runtime.yaml
-      claude-code/
-        runtime.yaml
-      pi/
-        runtime.yaml
-      telegram/
-        feature.yaml
-        gateway/handler.go, go.mod
-        channel/            ← TypeScript channel implementation
-      github-pat/
-        feature.yaml
-        gateway/handler.go, go.mod
-      static-header/
-        feature.yaml
-        gateway/handler.go, go.mod
-      custom-runtime/
-        feature.yaml
-        plugin.go           ← typed Config struct
-    generate/               ← Dockerfile + compose generation (template engine)
-    config/                 ← agent.yaml + fleet.yaml parsing
-    resolve/                ← plugin resolution (local → embedded)
-
-  ext/
-    plugins/               ← External plugins (per-plugin versioning, user overrides)
-
-  templates/               ← entrypoint.sh template, Dockerfile.tmpl
 ```

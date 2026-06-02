@@ -6,7 +6,6 @@ agents:
 shared:
   features:
     - plugin: github-pat
-      token: "${GITHUB_PAT}"
     - plugin: custom-runtime
       commands:
         - "apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find && rm -rf /var/lib/apt/lists/*"

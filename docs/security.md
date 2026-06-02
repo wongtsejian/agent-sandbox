@@ -2,13 +2,13 @@
 
 ## Architecture: Container Isolation
 
-Gateway and agent run in **separate containers** connected by a Docker internal network. The agent container has no internet access — all traffic is forced through the gateway via iptables DNAT.
+Gateway and agent run in **separate containers** connected by a Docker internal network. The agent container has no internet access — all traffic is forced through the gateway via default route (`ip route replace default via $GATEWAY_IP`).
 
 ```
 ┌─ gateway container ─────────────────┐
 │  Networks: [internal, default]      │
 │  Holds: real credentials, CA key    │──── internet
-│  IP forwarding + iptables PREROUTING│
+│  IP forwarding + iptables :443→:8443│
 │  Runs: gateway binary (:8443, :53)  │
 └──────────────┬──────────────────────┘
                │ Docker internal network
@@ -50,7 +50,7 @@ echo 1 > /proc/sys/net/ipv4/ip_forward
 iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 8443
 ```
 
-Agent has no iptables binary installed. Even with root, it cannot create firewall rules. Route changes are useless since the internal network only reaches the gateway.
+Agent has iptables only for port forwards (exposed service ports → localhost). Even with root, route changes are useless since the internal network only reaches the gateway.
 
 ## Credential Flow
 
@@ -118,7 +118,7 @@ Spawned containers:
 services:
   gateway:
     networks: [internal, default]
-    cap_add: [NET_ADMIN]          # for IP forwarding + iptables PREROUTING
+    cap_add: [NET_ADMIN]          # for IP forwarding + iptables redirect (:443→:8443)
     read_only: true
 
   agent:

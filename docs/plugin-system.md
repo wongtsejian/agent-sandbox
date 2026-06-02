@@ -7,54 +7,46 @@ Two plugin types with clear separation:
 - **RuntimePlugin** — data-driven (YAML + optional Dockerfile template). Sets base image + installs agent CLI. One per agent.
 - **FeaturePlugin** — hybrid (YAML metadata + Go code for gateway + TypeScript for channel manager). Additive capabilities. Multiple per agent.
 
-**Key principle:** Plugin updates never require CLI upgrades. CLI is a generic template engine.
+**Key principle:** Core plugins ship with the CLI. Gateway and channel code recompiles during Docker build, so handler fixes only require a container rebuild.
 
 ## Plugin Directory Structure
 
 ### Runtime Plugins (Pure Data)
 
 ```
-plugins/
+internal/plugins/
   codex/
     runtime.yaml            ← base image, install commands, default CMD
-    Dockerfile.tmpl         ← optional: custom Dockerfile template
-  claude-code/
-    runtime.yaml
-  pi/
-    runtime.yaml
 ```
 
-Runtime plugins are pure data — no Go code, no compilation. The CLI reads `runtime.yaml` and generates a Dockerfile using a built-in template (or the plugin's custom `Dockerfile.tmpl`).
+Runtime plugins are pure data — no Go code, no compilation. The CLI reads `runtime.yaml` and generates a Dockerfile using the built-in generator.
 
 ### Feature Plugins (Data + Code)
 
 ```
-plugins/
-  github/
-    feature.yaml            ← metadata, config schema, hosts
-    gateway/                ← Go source: compiled during Docker build (not CLI build)
-      handler.go
-      go.mod
+internal/plugins/
   telegram/
     feature.yaml            ← metadata, config schema
-    gateway/                ← Go: MITM handler for api.telegram.org
-      handler.go
-      go.mod
+    plugin.go               ← typed Config struct + Register[C]() call
+    plugin_test.go
     channel/                ← TypeScript: channel implementation (Channel Protocol)
       channel.ts            ← export default class implementing Channel
+  github-pat/
+    feature.yaml            ← metadata, config schema, hosts
+    plugin.go
+    plugin_test.go
+  static-header/
+    feature.yaml
+    plugin.go
+    plugin_test.go
   custom-runtime/
     feature.yaml            ← metadata, config schema
-                            ← no gateway/, no channel/ — pure config-driven
-  docker/
-    feature.yaml
-    gateway/                ← Go: Docker API validator
-      handler.go
-      go.mod
+    plugin.go               ← no gateway, no channel — pure config-driven
 ```
 
 Feature plugins have:
 - `feature.yaml` — always present (metadata, config schema, hosts)
-- `gateway/` — optional Go source, compiled during Docker multi-stage build
+- `plugin.go` — typed Config struct with `yaml`/`schema` tags, registered via `init()`
 - `channel/` — optional TypeScript, copied into image
 
 ## Runtime Plugin Schema (runtime.yaml)
@@ -97,7 +89,7 @@ gateway:
     - "api.github.com"
   mode: mitm            # mitm | passthrough
 
-bridge: false           # no channel plugin
+channel: false          # no channel plugin
 
 compose: {}             # no extra services
 ```
@@ -121,7 +113,7 @@ gateway:
     - "api.telegram.org"
   mode: mitm
 
-bridge: true            # has channel/ directory with TypeScript
+channel: true           # has channel/ directory with TypeScript
 
 compose: {}
 ```
@@ -142,7 +134,7 @@ config_schema:
     items: string
 
 gateway: false          # no gateway involvement
-bridge: false           # no channel plugin
+channel: false          # no channel plugin
 
 compose:
   volumes_from_config: runtime_volumes   # maps config field → compose volumes
@@ -154,8 +146,8 @@ compose:
 agent-sandbox generate
   │
   ├── Read agent.yaml
-  ├── Find runtime plugin: plugins/<runtime>/runtime.yaml
-  ├── Find feature plugins: plugins/<feature>/feature.yaml (for each)
+  ├── Find runtime plugin: internal/plugins/<runtime>/runtime.yaml
+  ├── Find feature plugins: registered via init() in internal/plugins/<feature>/plugin.go
   │
   ├── Generate Dockerfile:
   │     ├── FROM <runtime.base_image>
@@ -200,15 +192,15 @@ The channel manager is a generic TypeScript runtime that spawns the agent proces
 
 1. Plugin provides `channel/channel.ts` — exports default a class implementing `Channel`
 2. Constructor signature: `constructor(config: Record<string, unknown>)` — receives the full channel manager config
-3. Plugin's Go code declares `BridgeChannel: "telegram"` in FeatureContributions
-4. Plugin's Go code populates `BridgeConfig` with channel-specific config
+3. Plugin's Go code declares `ChannelName: "telegram"` in FeatureContributions
+4. Plugin's Go code populates `ChannelConfig` with channel-specific config
 
 ### Generator Assembly
 
 During `agent-sandbox generate`, the generator:
 
 1. Copies channel manager core (`channel-manager/`) to `.build/channel-manager-src/`
-2. For each plugin with `BridgeChannel` set, copies `channel/channel.ts` → `.build/channel-manager-src/src/channel/<name>.ts`
+2. For each plugin with `ChannelName` set, copies `channel/channel.ts` → `.build/channel-manager-src/src/channel/<name>.ts`
 3. Generates `.build/channel-manager-src/src/channel/channels.gen.ts` — import map of all channels
 
 ```
@@ -225,7 +217,7 @@ During `agent-sandbox generate`, the generator:
 ### Adding a New Channel
 
 1. Create `internal/plugins/<name>/channel/channel.ts` implementing Channel
-2. In plugin.go: `BridgeChannel: "<name>"` + `BridgeConfig: map[string]any{...}`
+2. In plugin.go: `ChannelName: "<name>"` + `ChannelConfig: map[string]any{...}`
 3. Run `agent-sandbox generate` — channel is automatically assembled
 
 ## Custom Runtime (Inline)
@@ -240,8 +232,6 @@ runtime:
     - pip install my-agent-cli
   cmd: ["my-agent-cli", "--headless"]
 ```
-
-Or create a local `plugins/my-runtime/runtime.yaml`.
 
 ## Why Data-Driven
 

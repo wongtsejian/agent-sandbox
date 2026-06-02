@@ -38,5 +38,5 @@ Use Docker containers with our own Go transparent proxy instead of OpenShell.
 **Mitigations:**
 - Docker's default seccomp profile blocks most dangerous syscalls
 - Container network isolation (internal network) prevents direct internet access
-- iptables transparent proxy is kernel-enforced (agent cannot bypass)
+- Default route to gateway + iptables in gateway container is kernel-enforced (agent cannot bypass)
 - Can add custom seccomp profiles later via Docker's `--security-opt`

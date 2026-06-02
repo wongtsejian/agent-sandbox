@@ -98,7 +98,7 @@ The proxy validates and mutates the create request:
 | `Memory` | Policy limit (e.g., 2GB) |
 | `NanoCPUs` | Policy limit (e.g., 2 CPUs) |
 | `PidsLimit` | Policy limit (e.g., 256) |
-| `Labels` | `agent-fleet.agent=<name>`, `agent-fleet.sandbox=<id>` |
+| `Labels` | `agent-sandbox.agent=<name>`, `agent-sandbox.sandbox=<id>` |
 | `RestartPolicy` | `no` (prevent zombie containers) |
 
 ### On Image Pull (`/images/create`)
@@ -160,8 +160,8 @@ Agent-spawned containers do NOT receive this token — they cannot talk to the p
 When the sandbox is destroyed, the proxy cleans up all agent-spawned containers:
 
 ```
-1. agent-fleet compose down (or sandbox timeout)
-2. Proxy queries Docker for containers with label agent-fleet.sandbox=<id>
+1. agent-sandbox compose down (or sandbox timeout)
+2. Proxy queries Docker for containers with label agent-sandbox.sandbox=<id>
 3. Proxy stops and removes all matching containers
 4. Proxy removes itself
 ```
@@ -193,4 +193,4 @@ The Docker API Proxy is a small Go binary (~500 lines core logic):
 - JWT validation for authentication
 - Docker client for cleanup operations
 
-Deployed as a container on the internal network, managed by agent-fleet lifecycle.
+Deployed as a container on the internal network, managed by agent-sandbox lifecycle.

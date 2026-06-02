@@ -33,19 +33,19 @@ Route ALL credentials through the transparent proxy, including the Telegram bot 
 
 **How it works:**
 ```
-Channel provider calls: POST https://api.telegram.org/bot_dummy/sendMessage
-  → Proxy intercepts (iptables transparent redirect)
-  → Matches egress rule: api.telegram.org → telegram-bot provider
-  → Provider rewrites URL: /bot_dummy/ → /bot123456:ABC-DEF/
+Channel manager calls: POST https://api.telegram.org/bot_dummy/sendMessage
+  → Default route sends to gateway container
+  → Gateway iptables redirects :443 to proxy :8443
+  → Proxy reads SNI: api.telegram.org → matches telegram rewriter
+  → Rewriter rewrites URL: /bot_dummy/ → /bot123456:ABC-DEF/
   → Proxy forwards to real Telegram API with real token
 ```
 
-**Provider interface:**
-Each provider defines its own options schema and handles requests however it needs to. The proxy doesn't need to know about injection strategies — it just delegates to the matched provider:
+**Rewriter interface (current):**
+The gateway uses typed rewriters that implement request transformation. Each rewriter type handles its own injection strategy:
 
 ```go
-type EgressRuleProvider interface {
-    OptionsSchema() Schema
-    HandleRequest(req *http.Request, opts Options) (*http.Request, error)
+type Rewriter interface {
+    RewriteRequest(req *http.Request) bool
 }
 ```

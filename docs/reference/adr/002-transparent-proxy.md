@@ -1,7 +1,7 @@
 # ADR-002: Transparent Proxy (iptables) Over Explicit Proxy (HTTP_PROXY)
 
 ## Status
-Accepted
+Accepted (implementation evolved — see note below)
 
 ## Context
 We need to route all agent egress through our proxy for policy enforcement and credential injection. Two approaches:
@@ -28,10 +28,10 @@ Use transparent proxy with iptables redirect.
 - Slightly more complex container initialization (iptables rules at startup)
 - Non-HTTP TCP traffic needs special handling (passthrough or block)
 
-**Implementation:**
-```bash
-# Inside agent container at startup:
-iptables -t nat -A OUTPUT -p tcp -m owner ! --uid-owner proxy-uid -j REDIRECT --to-port 8443
-```
+**Implementation Note (current):**
 
-The proxy runs as a dedicated user (`proxy-uid`). Its own connections are exempt from redirection to prevent loops.
+The original single-container iptables OUTPUT redirect was replaced by a two-container model:
+- Agent container: `ip route replace default via $GATEWAY_IP` (all traffic flows to gateway)
+- Gateway container: `iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 8443`
+
+The core decision (transparent, kernel-enforced proxy over HTTP_PROXY env vars) remains unchanged. The isolation model is stronger — gateway runs in a separate container the agent cannot access.

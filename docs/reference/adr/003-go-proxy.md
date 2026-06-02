@@ -9,7 +9,7 @@ We need an L7 proxy that can:
 - Evaluate egress rules (first match wins)
 - Inject credentials (headers, URL rewrite)
 - Manage OAuth tokens (storage, auto-refresh)
-- Handle transparent proxy mode (iptables redirect, SO_ORIGINAL_DST)
+- Handle transparent proxy mode (default route forwarding, SNI-based routing)
 
 Options considered:
 1. **Go proxy** (`goproxy` library or custom) — same language as CLI

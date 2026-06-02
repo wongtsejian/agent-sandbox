@@ -10,8 +10,8 @@
 | 4 | Universal gateway binary | Build once per container, configure per-agent. Handlers compiled during Docker build. |
 | 5 | Channel manager always entrypoint | Agent is always a child process. No WrapCmd hack. |
 | 6 | Allow-all egress default | Dev agents need unrestricted installs. MITM only where needed. |
-| 7 | Gateway inside each container | Self-contained. Per-agent config without routing complexity. |
-| 8 | Plugin updates independent of CLI | CLI ships embedded defaults. Local `plugins/` dir overrides. No CLI upgrade for plugin fixes. |
+| 7 | Gateway as separate container | Security isolation. Agent cannot access secrets. Per-agent config without shared state. |
+| 8 | Core plugins embedded in CLI | CLI ships all plugins. Gateway/channel code recompiles during Docker build — handler fixes only need container rebuild. |
 | 9 | Home override via /opt staging | Volume hides /home/agent. Staging + entrypoint cp ensures configs win. |
 | 10 | Channels are channel-manager sub-plugins | Messaging is channel-manager's concern. TypeScript in plugin's `channel/` dir. |
 | 11 | All credentials through gateway | Even channel-manager gets dummy tokens. Real creds never in container env. |
@@ -30,8 +30,7 @@
 
 **Consequences:**
 - CLI binary is smaller (no plugin Go code compiled in)
-- Plugin fixes don't require CLI upgrades
-- Users can override any plugin locally
+- Gateway/channel handler fixes only require container rebuild, not CLI upgrade
 - Gateway handlers are still type-safe Go (compiled during Docker build)
 - Slightly more complex generate logic (read YAML + resolve files vs call Go function)
 
@@ -48,8 +47,8 @@
 | Docker access | Egress rule provider | `docker: true` |
 | Deploy | generate → compose up | generate → compose up |
 | Egress default | Deny | Allow all |
-| Gateway | Sidecar container | Inside agent container |
-| Plugin updates | Requires CLI upgrade | Independent of CLI |
+| Gateway | Sidecar container | Separate container (security isolation) |
+| Plugin updates | Requires CLI upgrade | Handler/channel fixes need container rebuild only |
 
 ## Open Questions
 
@@ -76,10 +75,10 @@
 
 | Change | User action |
 |--------|-------------|
-| New built-in plugin | `agent-sandbox upgrade` (optional — can also add locally) |
-| Plugin data fix (runtime.yaml) | Override locally OR `agent-sandbox upgrade` |
-| Gateway handler fix | Override `plugins/<name>/gateway/` locally, rebuild |
-| Channel plugin fix | Override `plugins/<name>/channel/` locally, rebuild |
+| New built-in plugin | `agent-sandbox upgrade` |
+| Plugin data fix (runtime.yaml) | `agent-sandbox upgrade` |
+| Gateway handler fix | `agent-sandbox upgrade`, then rebuild container |
+| Channel plugin fix | `agent-sandbox upgrade`, then rebuild container |
 | CLI template engine fix | `agent-sandbox upgrade` |
 | Config schema change | Edit agent.yaml → re-generate |
 
