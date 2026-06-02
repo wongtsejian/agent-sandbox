@@ -4,7 +4,7 @@ Opinionated agent sandbox orchestrator. Deploy AI coding agents inside Docker co
 
 ## Status
 
-🚧 Under active development. See [Migration Plan](docs/migration-plan.md) for roadmap.
+🚧 Under active development. See [Roadmap](docs/roadmap.md) for progress.
 
 ## Quick Start
 
@@ -72,7 +72,7 @@ agent-sandbox compose ...       # docker compose passthrough
 - [Build & Deploy](docs/build-and-deploy.md)
 - [CLI & UX](docs/cli-and-ux.md)
 - [Decisions](docs/decisions.md)
-- [Migration Plan](docs/migration-plan.md)
+- [Roadmap](docs/roadmap.md)
 
 ## License
 

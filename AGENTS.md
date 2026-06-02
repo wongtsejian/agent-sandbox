@@ -142,7 +142,7 @@ Rules:
 ## Design Docs
 
 See docs/ for architecture, plugin system, configuration, and security docs.
-Refer to docs/migration-plan.md for the phased implementation plan.
+Refer to docs/roadmap.md for the phased implementation plan.
 
 ### Reference Docs
 
@@ -167,4 +167,4 @@ Evolved from [agent-fleet](https://github.com/donbader/agent-fleet). This repo i
 
 ## Implementation Plan
 
-See [docs/migration-plan.md](docs/migration-plan.md) for the phased implementation plan with checklists, config examples, and scope details.
+See [docs/roadmap.md](docs/roadmap.md) for the phased implementation plan with checklists, config examples, and scope details.

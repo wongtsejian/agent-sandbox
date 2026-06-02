@@ -59,4 +59,4 @@ An opinionated agent sandbox orchestrator that deploys AI coding agents inside s
 | [Build & Deploy](build-and-deploy.md) | Build flow, Dockerfile, distribution, multi-agent |
 | [CLI & UX](cli-and-ux.md) | Commands, UX design, DX for plugin authors |
 | [Decisions](decisions.md) | Key decisions, comparison with agent-fleet, maintainability |
-| [Migration Plan](migration-plan.md) | Phased plan to migrate from agent-fleet to agent-sandbox |
+| [Roadmap](roadmap.md) | Phased plan to migrate from agent-fleet to agent-sandbox |

@@ -1,4 +1,4 @@
-# Migration Plan: agent-fleet → agent-sandbox
+# Roadmap
 
 ## Strategy
 
@@ -95,7 +95,7 @@ features:
 
 ---
 
-### Phase 3: Gateway (Network Enforcement) ✅
+### Phase 3: Gateway (Network Enforcement)
 
 **What works after this phase:**
 ```bash
@@ -145,26 +145,7 @@ agent-sandbox generate && agent-sandbox compose up --build
 
 ---
 
-### Phase 5: Remaining Features
-
-**What works after this phase:**
-```bash
-agent-sandbox generate && agent-sandbox compose up --build
-# → Full-featured agent: Docker API proxy, mcp-oauth, streaming
-```
-
-- [ ] `plugins/docker/feature.yaml` + `gateway/handler.go` + compose sidecar
-- [ ] `plugins/mcp-oauth/feature.yaml` + `gateway/handler.go`
-- [ ] Streaming reply (edit Telegram message as agent streams)
-- [ ] Context buffer (multi-message batching before sending to agent)
-- [ ] Agent-provided commands (declared via ACP initialize response)
-- [x] Telegram `setMyCommands` registration (bot menu)
-- [ ] Security hardening (cap_drop, no-new-privileges, hidepid, file permissions)
-- [ ] `examples/full/` example (all features)
-
----
-
-### Phase 6: CLI Polish + Multi-Agent
+### Phase 5: CLI Polish + Multi-Agent
 
 **What works after this phase:**
 ```bash
@@ -183,6 +164,24 @@ agent-sandbox upgrade                   # self-update
 
 ---
 
+### Phase 6: Integrations & Hardening
+
+**What works after this phase:**
+```bash
+agent-sandbox generate && agent-sandbox compose up --build
+# → Full-featured agent: Docker API proxy, mcp-oauth, streaming
+```
+
+- [ ] `plugins/docker/feature.yaml` + `gateway/handler.go` + compose sidecar
+- [ ] `plugins/mcp-oauth/feature.yaml` + `gateway/handler.go`
+- [ ] Streaming reply (edit Telegram message as agent streams)
+- [ ] Context buffer (multi-message batching before sending to agent)
+- [ ] Agent-provided commands (declared via ACP initialize response)
+- [x] Telegram `setMyCommands` registration (bot menu)
+- [ ] Security hardening (cap_drop, no-new-privileges, hidepid, file permissions)
+
+---
+
 ### Phase 7: CI + Polish
 
 - [ ] GitHub Actions CI (lint, test, build on PR)
@@ -198,11 +197,11 @@ agent-sandbox upgrade                   # self-update
 | agent-fleet source | agent-sandbox destination | Phase | Reuse % |
 |-------------------|--------------------------|-------|---------|
 | `pkg/gateway/` (proxy, sni) | `gateway/` | 3 | 80% |
-| `pkg/gateway/mitm.go` | `gateway/mitm.go` | 4, 5 | 80% |
+| `pkg/gateway/mitm.go` | `gateway/mitm.go` | 4 | 80% |
 | `runtimes/channels-bridge/src/` | `channel-manager/src/` | 4 | 70% |
 | `runtimes/codex/` | `plugins/codex/runtime.yaml` | 1 | 30% |
 | `runtimes/codex/entrypoint.sh` | `templates/entrypoint.sh` | 2 | 50% |
-| `pkg/selfupdate/` | `internal/selfupdate/` | 6 | 90% |
+| `pkg/selfupdate/` | `internal/selfupdate/` | 5 | 90% |
 | `pkg/config/` | `internal/config/` | 1 | 20% |
 
 ## What Gets Dropped
