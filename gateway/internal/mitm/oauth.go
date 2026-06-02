@@ -247,7 +247,7 @@ func (r *OAuthRewriter) refreshToken(stored *StoredToken) (*StoredToken, error) 
 	if err != nil {
 		return nil, fmt.Errorf("refresh request to %s: %w", stored.TokenEndpoint, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB max
 	if err != nil {

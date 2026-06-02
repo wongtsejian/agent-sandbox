@@ -128,7 +128,7 @@ func structToJSONSchema(v any) map[string]any {
 		return nil
 	}
 	t := reflect.TypeOf(v)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {

@@ -243,7 +243,7 @@ func TestOAuthRewriter_CachesToken(t *testing.T) {
 	rw.RewriteRequest(req1)
 
 	// Delete the token file — second request should use cache.
-	os.Remove(tokenFile)
+	_ = os.Remove(tokenFile)
 
 	req2 := httptest.NewRequest("POST", "https://mcp.notion.com/mcp", nil)
 	req2.Host = "mcp.notion.com"

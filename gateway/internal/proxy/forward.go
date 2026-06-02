@@ -48,14 +48,14 @@ func (f *Forwarder) Close() error {
 }
 
 func (f *Forwarder) handle(clientConn net.Conn) {
-	defer clientConn.Close()
+	defer func() { _ = clientConn.Close() }()
 
 	serverConn, err := net.DialTimeout("tcp", f.target, 10*time.Second)
 	if err != nil {
 		slog.Debug("forward dial failed", "target", f.target, "error", err)
 		return
 	}
-	defer serverConn.Close()
+	defer func() { _ = serverConn.Close() }()
 
 	var wg sync.WaitGroup
 	wg.Add(2)

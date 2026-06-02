@@ -67,13 +67,13 @@ func TestMCPOAuthPlugin_MultipleProviders(t *testing.T) {
 	assert.Len(t, contrib.Rewriters, 2)
 
 	// OAuth config should include both providers
-	oauthConfig := contrib.ChannelConfig["oauth"].(map[string]any)
-	providers := oauthConfig["providers"].(map[string]any)
+	oauthConfig, _ := contrib.ChannelConfig["oauth"].(map[string]any)
+	providers, _ := oauthConfig["providers"].(map[string]any)
 	assert.Contains(t, providers, "notion")
 	assert.Contains(t, providers, "slack")
 
 	// Slack should have client_id
-	slackCfg := providers["slack"].(map[string]any)
+	slackCfg, _ := providers["slack"].(map[string]any)
 	assert.Equal(t, "slack-client-id", slackCfg["client_id"])
 }
 

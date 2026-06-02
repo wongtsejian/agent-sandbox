@@ -56,7 +56,7 @@ func (p *Proxy) Close() error {
 }
 
 func (p *Proxy) handleConn(clientConn net.Conn) {
-	defer clientConn.Close()
+	defer func() { _ = clientConn.Close() }()
 
 	slog.Debug("new connection", "remote_addr", clientConn.RemoteAddr())
 
@@ -99,7 +99,7 @@ func (p *Proxy) passthrough(clientConn net.Conn, initialData []byte, serverName 
 		slog.Error("upstream connection failed", "host", destAddr, "error", err)
 		return
 	}
-	defer serverConn.Close()
+	defer func() { _ = serverConn.Close() }()
 
 	// Send the initial ClientHello that we already read
 	if _, err := serverConn.Write(initialData); err != nil {
