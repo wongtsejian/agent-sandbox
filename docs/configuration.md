@@ -95,6 +95,10 @@ features:
     name: stx-llm-gateway                # optional instance name for logs
     domains: ["agent-gateway.stx-ai.net"]
     header: "Authorization"
+  - plugin: mcp-oauth
+    providers:
+      notion:
+        mcp_url: https://mcp.notion.com/mcp
     value_format: "Bearer ${value}"
     env_var: "STX_LLM_GATEWAY_API_KEY"
 ```
