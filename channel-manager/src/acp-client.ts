@@ -21,9 +21,14 @@ export interface AgentCommand {
   inputHint?: string;
 }
 
+export interface PromptOptions {
+  onSessionUpdate?: (notification: acp.SessionNotification) => void;
+}
+
 export class BridgeClient implements acp.Client {
   private chunkCallback: ((text: string) => void) | null = null;
   private commandsCallback: ((commands: AgentCommand[]) => void) | null = null;
+  private sessionUpdateCallbacks = new Map<string, (notification: acp.SessionNotification) => void>();
 
   setChunkCallback(cb: ((text: string) => void) | null): void {
     this.chunkCallback = cb;
@@ -31,6 +36,14 @@ export class BridgeClient implements acp.Client {
 
   setCommandsCallback(cb: ((commands: AgentCommand[]) => void) | null): void {
     this.commandsCallback = cb;
+  }
+
+  setSessionUpdateCallbackForSession(sessionId: string, cb: ((notification: acp.SessionNotification) => void) | null): void {
+    if (cb) {
+      this.sessionUpdateCallbacks.set(sessionId, cb);
+    } else {
+      this.sessionUpdateCallbacks.delete(sessionId);
+    }
   }
 
   async requestPermission(
@@ -49,6 +62,17 @@ export class BridgeClient implements acp.Client {
   }
 
   async sessionUpdate(params: acp.SessionNotification): Promise<void> {
+    // Forward to session-specific callback before specific handling
+    const sessionId = (params as any).sessionId as string | undefined;
+    const cb = sessionId ? this.sessionUpdateCallbacks.get(sessionId) : undefined;
+    if (cb) {
+      try {
+        cb(params);
+      } catch {
+        // Don't let caller errors break chunk collection
+      }
+    }
+
     const { update } = params;
     if (
       update.sessionUpdate === "agent_message_chunk" &&
@@ -187,7 +211,7 @@ export class AcpAgent {
    * Sends a prompt to the agent and returns the full response text.
    * Collects all agent_message_chunk updates until the prompt completes.
    */
-  async prompt(sessionId: string, text: string): Promise<string> {
+  async prompt(sessionId: string, text: string, options?: PromptOptions): Promise<string> {
     if (!this.connection) {
       throw new Error("ACP agent not started");
     }
@@ -200,25 +224,31 @@ export class AcpAgent {
 
     const chunks: string[] = [];
 
-    return new Promise<string>((resolve, reject) => {
-      this.acpHandler.setChunkCallback((chunk) => chunks.push(chunk));
-      this.pendingReject = reject;
+    this.acpHandler.setChunkCallback((chunk) => chunks.push(chunk));
+    if (options?.onSessionUpdate) {
+      this.acpHandler.setSessionUpdateCallbackForSession(sessionId, options.onSessionUpdate);
+    }
 
-      this.connection!.prompt({
-        sessionId,
-        prompt: [{ type: "text", text }],
-      })
-        .then(() => {
-          this.pendingReject = null;
-          this.acpHandler.setChunkCallback(null);
-          resolve(chunks.join(""));
+    try {
+      await new Promise<void>((resolve, reject) => {
+        this.pendingReject = reject;
+
+        this.connection!.prompt({
+          sessionId,
+          prompt: [{ type: "text", text }],
         })
-        .catch((err: unknown) => {
-          this.pendingReject = null;
-          this.acpHandler.setChunkCallback(null);
-          reject(err instanceof Error ? err : new Error(String(err)));
-        });
-    });
+          .then(() => resolve())
+          .catch((err: unknown) => {
+            reject(err instanceof Error ? err : new Error(String(err)));
+          });
+      });
+
+      return chunks.join("");
+    } finally {
+      this.pendingReject = null;
+      this.acpHandler.setChunkCallback(null);
+      this.acpHandler.setSessionUpdateCallbackForSession(sessionId, null);
+    }
   }
 
   /** Whether the agent has an active connection. */
