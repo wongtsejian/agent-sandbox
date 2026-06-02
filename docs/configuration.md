@@ -21,7 +21,7 @@ features:
   - plugin: docker
   - plugin: telegram
     bot_token: "${TELEGRAM_BOT_TOKEN}"
-    allowed_users: ["donbader"]
+    allowed_users: ["@donbader"]
   - plugin: custom-runtime
     commands:
       - "apt-get install -y ripgrep fd-find"
@@ -72,7 +72,7 @@ features:
   - plugin: docker                        # no extra config needed
   - plugin: telegram
     bot_token: "${BOT_TOKEN}"
-    allowed_users: ["donbader"]
+    allowed_users: ["@donbader"]
   - plugin: custom-runtime
     commands: ["apt-get install -y ripgrep"]
     entrypoint_hooks: [./scripts/setup.sh]

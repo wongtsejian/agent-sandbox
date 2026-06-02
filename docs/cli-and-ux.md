@@ -59,7 +59,7 @@ features:
 features:
   - plugin: telegram
     bot_token: "${BOT_TOKEN}"
-    allowed_users: ["me"]
+    allowed_users: ["@me"]
 
 # Full power:
 features:
@@ -68,7 +68,7 @@ features:
   - plugin: docker
   - plugin: telegram
     bot_token: "${BOT_TOKEN}"
-    allowed_users: ["me"]
+    allowed_users: ["@me"]
   - plugin: custom-runtime
     commands: ["apt-get install -y ripgrep fd-find"]
     entrypoint_hooks: [./scripts/sync-dotfiles.sh]

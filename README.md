@@ -43,7 +43,7 @@ features:
     token: "${GITHUB_PAT}"
   - plugin: telegram
     bot_token: "${TELEGRAM_BOT_TOKEN}"
-    allowed_users: ["donbader"]
+    allowed_users: ["@donbader"]
   - plugin: custom-runtime
     commands:
       - "apt-get install -y ripgrep fd-find"

@@ -124,7 +124,7 @@ Handles: dynamic client registration (RFC 7591), authorization flow, token excha
 features:
   - plugin: telegram
     bot_token: "${TELEGRAM_BOT_TOKEN}"
-    allowed_users: ["donbader"]
+    allowed_users: ["@donbader"]
 ```
 
 Gateway: MITM on api.telegram.org, injects bot token via URL rewrite.
