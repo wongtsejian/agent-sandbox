@@ -1,5 +1,19 @@
 # Configuration
 
+## Editor Autocompletion
+
+Running `agent-sandbox generate` produces `.build/schema.json` — a JSON Schema for `agent.yaml`. Add this comment at the top of your config to get autocompletion and validation in VS Code (requires the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml)):
+
+```yaml
+# yaml-language-server: $schema=.build/schema.json
+name: coder
+runtime: codex
+```
+
+The schema is generated from plugin struct tags, so it always reflects your active plugins — including available fields, types, defaults, and validation patterns (e.g., `@` prefix on usernames).
+
+> Note: You need to run `agent-sandbox generate` at least once before the schema file exists.
+
 ## Single Agent
 
 ```
