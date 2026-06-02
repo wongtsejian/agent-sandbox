@@ -57,8 +57,8 @@ features:
 # Add channels:
 features:
   - plugin: telegram
-    bot_token: "${BOT_TOKEN}"
-    allowed_users: ["@me"]
+    access_control:
+      allowed_users: ["@me"]
 
 # Full power:
 features:
@@ -66,10 +66,10 @@ features:
     token: "${GITHUB_PAT}"
   - plugin: docker
   - plugin: telegram
-    bot_token: "${BOT_TOKEN}"
-    allowed_users: ["@me"]
+    access_control:
+      allowed_users: ["@me"]
   - plugin: custom-runtime
-    commands: ["apt-get install -y ripgrep fd-find"]
+    commands: ["apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find && rm -rf /var/lib/apt/lists/*"]
     entrypoint_hooks: [./scripts/sync-dotfiles.sh]
     runtime_volumes: ["agent-home:/home/agent"]
 ```
@@ -95,44 +95,23 @@ $ agent-sandbox validate
 
 ## DX (Plugin Authors)
 
-### Scaffold
+### Creating a New Plugin
 
-```bash
-$ agent-sandbox plugin new my-corp-api
-Created plugins/my-corp-api/ (go.mod, plugin.go, plugin_test.go, README.md)
-```
+Core plugins live in `internal/plugins/<name>/`. Each plugin needs:
+
+1. `feature.yaml` — metadata and config schema
+2. `plugin.go` — typed Config struct + `Register[C]()` call
+3. `plugin_test.go` — tests
 
 ### Testing
 
 ```go
-func TestContribute(t *testing.T) {
-    p := New()
-    contrib, err := p.Contribute(sdk.ContributeContext{
-        AgentName: "test",
-        Config:    map[string]any{"token": "ghp_test"},
+func TestResolve(t *testing.T) {
+    contrib, err := resolve.ResolveFeature("github-pat", ".", map[string]any{
+        "token": "ghp_test",
     })
     require.NoError(t, err)
-    assert.Equal(t, []string{"github.com", "*.github.com"}, contrib.EgressRules[0].Hosts)
+    assert.Contains(t, contrib.MITMDomains, "api.github.com")
+    assert.NotEmpty(t, contrib.Rewriters)
 }
-
-func TestHandler(t *testing.T) {
-    p := github.New()
-    contrib, _ := p.Contribute(sdk.ContributeContext{
-        AgentName: "test",
-        Config:    map[string]any{"token": "ghp_real"},
-    })
-    handler, _ := contrib.Gateway.NewHandler(map[string]any{"token": "ghp_real"})
-    req := httptest.NewRequest("GET", "https://api.github.com/repos", nil)
-    handler.HandleRequest(req)
-    assert.Equal(t, "token ghp_real", req.Header.Get("Authorization"))
-}
-```
-
-### Integration Test Helper
-
-```go
-sb := sdktest.NewTestSandbox(t, github.New(), telegram.New())
-defer sb.Cleanup()
-resp := sb.HTTPGet("https://api.github.com/user")
-assert.Equal(t, 200, resp.StatusCode)
 ```

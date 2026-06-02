@@ -65,7 +65,7 @@ func TestGenerator_Run(t *testing.T) {
 				User:      "agent",
 			},
 			Features: []*resolve.FeatureContributions{
-				{Commands: []string{"apt-get install -y ripgrep fd-find"}},
+				{Commands: []string{"apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find && rm -rf /var/lib/apt/lists/*"}},
 			},
 			Dir:    t.TempDir(),
 			OutDir: outDir,
@@ -76,7 +76,7 @@ func TestGenerator_Run(t *testing.T) {
 
 		df, err := os.ReadFile(filepath.Join(outDir, "Dockerfile"))
 		require.NoError(t, err)
-		assert.Contains(t, string(df), "RUN apt-get install -y ripgrep fd-find")
+		assert.Contains(t, string(df), "RUN apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find && rm -rf /var/lib/apt/lists/*")
 	})
 
 	t.Run("with entrypoint hooks", func(t *testing.T) {

@@ -34,7 +34,7 @@ agent-sandbox generate && agent-sandbox compose up --build
 # → codex agent running in a container (direct entrypoint, no proxy, no channel manager)
 ```
 
-- [x] `plugins/codex/runtime.yaml` (base image, install commands, CMD)
+- [x] `internal/plugins/codex/runtime.yaml` (base image, install commands, CMD)
 - [x] `generate` command (reads agent.yaml + runtime.yaml → writes .build/)
 - [x] `compose` passthrough command
 - [x] Dockerfile generation (single stage, no gateway)
@@ -49,7 +49,7 @@ agent-sandbox generate && agent-sandbox compose up --build
 - [x] `examples/telegram-vibe/` for Telegram-based coding
 - [x] `install.sh` one-liner
 - [x] Convert codex plugin from Go code to `runtime.yaml` (data-driven)
-- [x] Plugin resolution (local `./plugins/` → embedded defaults)
+- [x] Plugin resolution (embedded core plugins)
 - [x] Inline runtime definition support in agent.yaml
 
 **Config:**
@@ -68,7 +68,7 @@ agent-sandbox generate && agent-sandbox compose up --build
 # → codex agent with custom packages, startup hooks, persistent home
 ```
 
-- [x] `plugins/custom-runtime/feature.yaml`
+- [x] `internal/plugins/custom-runtime/feature.yaml`
 - [x] Update `internal/generate/` to read feature.yaml and merge into Dockerfile
 - [x] Image commands wiring (RUN in Dockerfile from config)
 - [x] Entrypoint hooks wiring (scripts run on container start)
@@ -84,7 +84,7 @@ runtime: codex
 features:
   - plugin: custom-runtime
     commands:
-      - "apt-get install -y ripgrep fd-find"
+      - "apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find && rm -rf /var/lib/apt/lists/*"
     entrypoint_hooks:
       - ./scripts/sync-dotfiles.sh
     runtime_volumes:
@@ -109,7 +109,7 @@ agent-sandbox generate && agent-sandbox compose up --build
 - [x] DNS resolver (gateway:53, agent resolv.conf points to gateway)
 - [x] go:embed gateway source in CLI
 - [x] Separate gateway container (security isolation — agent can't read secrets)
-- [x] Default route proxy (IP forwarding via compose sysctls, no iptables on agent side)
+- [x] Default route proxy (IP forwarding + iptables DNAT in agent → gateway container)
 - [x] `RequestHandler` interface in gateway (for feature handlers)
 - [x] Structured logging (slog for Go, pino for TypeScript)
 - [x] Handler registry (config-driven — rewriter types instantiated from gateway-config.yaml)
@@ -128,9 +128,9 @@ agent-sandbox generate && agent-sandbox compose up --build
 - [x] Channel manager TypeScript (`channel-manager/`)
 - [x] ACP client (ClientSideConnection, auto-approve permissions)
 - [x] Channel plugin loader (generated `channels.gen.ts` registry)
-- [x] `plugins/telegram/feature.yaml`
-- [x] `plugins/telegram/gateway/handler.go` — MITM on api.telegram.org
-- [x] `plugins/telegram/channel/` — grammy channel plugin (ack emoji, typing, formatter, rate limiter)
+- [x] `internal/plugins/telegram/feature.yaml`
+- [x] `gateway/internal/mitm/telegram.go` — MITM on api.telegram.org
+- [x] `internal/plugins/telegram/channel/` — grammy channel plugin (ack emoji, typing, formatter, rate limiter)
 - [x] MITM logic in gateway core (TLS termination, HTTP interception)
 - [x] Sandbox CA generation
 - [x] Channel manager config generation (channel-manager-config.json)
@@ -197,11 +197,11 @@ agent-sandbox generate && agent-sandbox compose up --build
 | agent-fleet source | agent-sandbox destination | Phase | Reuse % |
 |-------------------|--------------------------|-------|---------|
 | `pkg/gateway/` (proxy, sni) | `gateway/` | 3 | 80% |
-| `pkg/gateway/mitm.go` | `gateway/mitm.go` | 4 | 80% |
+| `pkg/gateway/mitm.go` | `gateway/internal/mitm/` | 4 | 80% |
 | `runtimes/channels-bridge/src/` | `channel-manager/src/` | 4 | 70% |
-| `runtimes/codex/` | `plugins/codex/runtime.yaml` | 1 | 30% |
-| `runtimes/codex/entrypoint.sh` | `templates/entrypoint.sh` | 2 | 50% |
-| `pkg/selfupdate/` | `internal/selfupdate/` | 5 | 90% |
+| `runtimes/codex/` | `internal/plugins/codex/runtime.yaml` | 1 | 30% |
+| `runtimes/codex/entrypoint.sh` | `internal/generate/generate.go` (inline) | 2 | 50% |
+| `pkg/selfupdate/` | `cmd/agent-sandbox/main.go` (upgradeCmd) | 5 | 90% |
 | `pkg/config/` | `internal/config/` | 1 | 20% |
 
 ## What Gets Dropped

@@ -4,11 +4,11 @@ runtime: codex
 
 features:
   - plugin: telegram
-    bot_token: "${TELEGRAM_BOT_TOKEN_CODER}"
-    allowed_users: ["@your_username"]
+    access_control:
+      allowed_users: ["@your_username"]
   - plugin: custom-runtime
     commands:
-      - "apt-get install -y ripgrep fd-find"
+      - "apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find && rm -rf /var/lib/apt/lists/*"
       - "npm install -g typescript"
     runtime_volumes:
       - "coder-home:/home/agent"

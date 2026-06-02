@@ -34,11 +34,11 @@ features:
     token: "${GITHUB_PAT}"
   - plugin: docker
   - plugin: telegram
-    bot_token: "${TELEGRAM_BOT_TOKEN}"
-    allowed_users: ["@donbader"]
+    access_control:
+      allowed_users: ["@donbader"]
   - plugin: custom-runtime
     commands:
-      - "apt-get install -y ripgrep fd-find"
+      - "apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find && rm -rf /var/lib/apt/lists/*"
     entrypoint_hooks:
       - ./scripts/sync-dotfiles.sh
     runtime_volumes:
@@ -85,10 +85,10 @@ features:
     token: "${GITHUB_PAT}"               # secret reference
   - plugin: docker                        # no extra config needed
   - plugin: telegram
-    bot_token: "${BOT_TOKEN}"
-    allowed_users: ["@donbader"]
+    access_control:
+      allowed_users: ["@donbader"]
   - plugin: custom-runtime
-    commands: ["apt-get install -y ripgrep"]
+    commands: ["apt-get update && apt-get install -y --no-install-recommends ripgrep && rm -rf /var/lib/apt/lists/*"]
     entrypoint_hooks: [./scripts/setup.sh]
     runtime_volumes: ["agent-home:/home/agent"]
   - plugin: static-header

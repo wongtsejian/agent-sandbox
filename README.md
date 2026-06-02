@@ -42,11 +42,11 @@ features:
   - plugin: github-pat
     token: "${GITHUB_PAT}"
   - plugin: telegram
-    bot_token: "${TELEGRAM_BOT_TOKEN}"
-    allowed_users: ["@donbader"]
+    access_control:
+      allowed_users: ["@donbader"]
   - plugin: custom-runtime
     commands:
-      - "apt-get install -y ripgrep fd-find"
+      - "apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find && rm -rf /var/lib/apt/lists/*"
     runtime_volumes:
       - "agent-home:/home/agent"
 ```

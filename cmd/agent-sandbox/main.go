@@ -360,13 +360,13 @@ func initCmd() *cobra.Command {
 						if username == "" {
 							username = "@your_username"
 						}
-						b.WriteString("  - plugin: telegram\n")
-						b.WriteString("    bot_token: \"${TELEGRAM_BOT_TOKEN}\"\n")
-						b.WriteString(fmt.Sprintf("    allowed_users: [\"%s\"]\n", username))
-					case "custom-runtime":
-						b.WriteString("  - plugin: custom-runtime\n")
-						b.WriteString("    commands:\n")
-						b.WriteString("      - \"apt-get install -y ripgrep\"\n")
+					b.WriteString("  - plugin: telegram\n")
+					b.WriteString("    access_control:\n")
+					b.WriteString(fmt.Sprintf("      allowed_users: [\"%s\"]\n", username))
+				case "custom-runtime":
+					b.WriteString("  - plugin: custom-runtime\n")
+					b.WriteString("    commands:\n")
+					b.WriteString("      - \"apt-get update && apt-get install -y --no-install-recommends ripgrep && rm -rf /var/lib/apt/lists/*\"\n")
 					}
 				}
 			}

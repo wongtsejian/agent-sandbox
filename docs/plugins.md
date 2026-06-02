@@ -85,7 +85,7 @@ Gives users direct control over image build commands, startup hooks, and persist
 features:
   - plugin: custom-runtime
     commands:
-      - "apt-get install -y ripgrep fd-find"
+      - "apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find && rm -rf /var/lib/apt/lists/*"
       - "npm install -g typescript"
     entrypoint_hooks:
       - ./scripts/sync-dotfiles.sh
@@ -123,8 +123,8 @@ Handles: dynamic client registration (RFC 7591), authorization flow, token excha
 ```yaml
 features:
   - plugin: telegram
-    bot_token: "${TELEGRAM_BOT_TOKEN}"
-    allowed_users: ["@donbader"]
+    access_control:
+      allowed_users: ["@donbader"]
 ```
 
 Gateway: MITM on api.telegram.org, injects bot token via URL rewrite.
