@@ -102,7 +102,7 @@ func TestTelegramRewriter_RewriteRequest(t *testing.T) {
 	}
 
 	t.Run("rewrites bot token in path", func(t *testing.T) {
-		req, _ := http.NewRequest("GET", "https://api.telegram.org/bot000000000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/getUpdates", nil)
+		req, _ := http.NewRequest("GET", "https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates", nil)
 		ok := rw.RewriteRequest(req)
 		if !ok {
 			t.Error("expected rewrite to succeed")

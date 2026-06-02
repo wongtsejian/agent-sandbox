@@ -10,18 +10,84 @@ import { withRetry } from "./delivery/api-retry.js";
 import { formatMarkdown, splitMessage } from "./formatter/telegram.js";
 
 const log = createLogger("telegram");
-const DUMMY_TOKEN = "000000000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const DUMMY_TOKEN = "REDACTED_TELEGRAM_TOKEN";
 
 type ReactionEmoji = ReactionTypeEmoji["emoji"];
 
 const VALID_REACTION_EMOJIS: Set<string> = new Set([
-  "👍", "👎", "❤", "🔥", "🥰", "👏", "😁", "🤔", "🤯", "😱", "🤬", "😢",
-  "🎉", "🤩", "🤮", "💩", "🙏", "👌", "🕊", "🤡", "🥱", "🥴", "😍", "🐳",
-  "❤\u200D🔥", "🌚", "🌭", "💯", "🤣", "⚡", "🍌", "🏆", "💔", "🤨", "😐",
-  "🍓", "🍾", "💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "👨\u200D💻", "👀",
-  "🎃", "🙈", "😇", "😨", "🤝", "✍", "🤗", "🫡", "🎅", "🎄", "☃", "💅",
-  "🤪", "🗿", "🆒", "💘", "🙉", "🦄", "😘", "💊", "🙊", "😎", "👾",
-  "🤷\u200D♂", "🤷", "🤷\u200D♀", "😡",
+  "👍",
+  "👎",
+  "❤",
+  "🔥",
+  "🥰",
+  "👏",
+  "😁",
+  "🤔",
+  "🤯",
+  "😱",
+  "🤬",
+  "😢",
+  "🎉",
+  "🤩",
+  "🤮",
+  "💩",
+  "🙏",
+  "👌",
+  "🕊",
+  "🤡",
+  "🥱",
+  "🥴",
+  "😍",
+  "🐳",
+  "❤\u200D🔥",
+  "🌚",
+  "🌭",
+  "💯",
+  "🤣",
+  "⚡",
+  "🍌",
+  "🏆",
+  "💔",
+  "🤨",
+  "😐",
+  "🍓",
+  "🍾",
+  "💋",
+  "🖕",
+  "😈",
+  "😴",
+  "😭",
+  "🤓",
+  "👻",
+  "👨\u200D💻",
+  "👀",
+  "🎃",
+  "🙈",
+  "😇",
+  "😨",
+  "🤝",
+  "✍",
+  "🤗",
+  "🫡",
+  "🎅",
+  "🎄",
+  "☃",
+  "💅",
+  "🤪",
+  "🗿",
+  "🆒",
+  "💘",
+  "🙉",
+  "🦄",
+  "😘",
+  "💊",
+  "🙊",
+  "😎",
+  "👾",
+  "🤷\u200D♂",
+  "🤷",
+  "🤷\u200D♀",
+  "😡",
 ]);
 
 function isValidReactionEmoji(emoji: string): emoji is ReactionEmoji {
@@ -30,13 +96,19 @@ function isValidReactionEmoji(emoji: string): emoji is ReactionEmoji {
 
 /** Sanitize a command name for Telegram (lowercase a-z, 0-9, underscore only). */
 function sanitizeCommandName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^_+|_+$/g, "");
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 interface AccessControl {
   allowed_users?: string[];
   require_mention?: boolean;
-  groups?: Record<string, { allowed_users?: string[]; require_mention?: boolean }>;
+  groups?: Record<
+    string,
+    { allowed_users?: string[]; require_mention?: boolean }
+  >;
 }
 
 interface BufferedMessage {
@@ -51,7 +123,7 @@ interface BufferedMessage {
  */
 export default function createTelegramChannel(
   config: Record<string, unknown>,
-  agent: AcpAgent
+  agent: AcpAgent,
 ): Channel {
   const acl = (config?.access_control as AccessControl) ?? {};
   const ackRaw = config?.ack_emoji;
@@ -99,7 +171,11 @@ export default function createTelegramChannel(
 
   // --- Message handling ---
 
-  async function processMessage(chatId: string, text: string, messageId: number): Promise<void> {
+  async function processMessage(
+    chatId: string,
+    text: string,
+    messageId: number,
+  ): Promise<void> {
     // Ack
     if (ackEmoji) {
       ackMessage(chatId, messageId);
@@ -137,16 +213,22 @@ export default function createTelegramChannel(
     const segments = splitMessage(html);
 
     for (const segment of segments) {
-      rateLimiter.acquire(chatId).then(() =>
-        withRetry(async () => {
-          await bot.api.sendMessage(Number(chatId), segment, {
-            parse_mode: "HTML",
-            link_preview_options: { is_disabled: true },
-          });
-        })
-      ).catch((err) => {
-        log.error({ chatId, error: (err as Error).message }, "sendMessage failed");
-      });
+      rateLimiter
+        .acquire(chatId)
+        .then(() =>
+          withRetry(async () => {
+            await bot.api.sendMessage(Number(chatId), segment, {
+              parse_mode: "HTML",
+              link_preview_options: { is_disabled: true },
+            });
+          }),
+        )
+        .catch((err) => {
+          log.error(
+            { chatId, error: (err as Error).message },
+            "sendMessage failed",
+          );
+        });
     }
   }
 
@@ -156,7 +238,10 @@ export default function createTelegramChannel(
         { type: "emoji", emoji: ackEmoji! },
       ]);
     }).catch((err) => {
-      log.debug({ chatId, error: (err as Error).message }, "ack reaction failed");
+      log.debug(
+        { chatId, error: (err as Error).message },
+        "ack reaction failed",
+      );
     });
   }
 
@@ -180,11 +265,14 @@ export default function createTelegramChannel(
 
     if (commands.length === 0) return; // Don't register empty list
 
-    bot.api.setMyCommands(commands).then(() => {
-      log.info({ count: commands.length }, "registered bot commands");
-    }).catch((err) => {
-      log.warn({ error: err }, "failed to register bot commands");
-    });
+    bot.api
+      .setMyCommands(commands)
+      .then(() => {
+        log.info({ count: commands.length }, "registered bot commands");
+      })
+      .catch((err) => {
+        log.warn({ error: err }, "failed to register bot commands");
+      });
   }
 
   // --- Startup buffer ---
@@ -211,7 +299,8 @@ export default function createTelegramChannel(
     // ACL checks
     const groupAcl = acl.groups?.[chatId];
     const allowedUsers = groupAcl?.allowed_users ?? acl.allowed_users;
-    const requireMention = groupAcl?.require_mention ?? acl.require_mention ?? false;
+    const requireMention =
+      groupAcl?.require_mention ?? acl.require_mention ?? false;
 
     if (allowedUsers?.length && username) {
       if (!allowedUsers.includes(username)) {
@@ -230,7 +319,9 @@ export default function createTelegramChannel(
     // Strip @botname from message text
     const normalized = text.startsWith("/")
       ? text
-      : (botUsername ? text.replace(new RegExp(`@${botUsername}\\b`, "g"), "").trim() : text);
+      : botUsername
+        ? text.replace(new RegExp(`@${botUsername}\\b`, "g"), "").trim()
+        : text;
 
     if (startupBuffer.push({ chatId, text: normalized, messageId })) {
       return;
