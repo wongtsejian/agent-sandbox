@@ -117,7 +117,7 @@ agent-sandbox generate && agent-sandbox compose up --build
 
 ---
 
-### Phase 4: Bridge + Telegram ✅
+### Phase 4: Channel Manager + Telegram ✅
 
 **What works after this phase:**
 ```bash

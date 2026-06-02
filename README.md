@@ -4,7 +4,9 @@ Opinionated agent sandbox orchestrator. Deploy AI coding agents inside Docker co
 
 ## Status
 
-🚧 Under active development. See [Roadmap](docs/roadmap.md) for progress.
+Under active development. Core features work (Phases 0–4 complete). See [Roadmap](docs/roadmap.md) for what's done and what's next.
+
+**What works today:** generate build artifacts, run agents in containers, transparent proxy with credential injection, Telegram channel, custom runtime packages/volumes/hooks.
 
 ## Quick Start
 
@@ -12,16 +14,20 @@ Opinionated agent sandbox orchestrator. Deploy AI coding agents inside Docker co
 # Install
 curl -fsSL https://raw.githubusercontent.com/donbader/agent-sandbox/main/install.sh | bash
 
-# Initialize
-agent-sandbox init
+# Create a project directory
+mkdir my-agent && cd my-agent
 
-# Generate build artifacts
+# Write your config
+cat > agent.yaml << 'EOF'
+name: coder
+runtime: codex
+EOF
+
+# Generate build artifacts and start
 agent-sandbox generate
-
-# Start
 agent-sandbox compose up --build -d
 
-# Logs
+# View logs
 agent-sandbox compose logs -f
 ```
 
@@ -33,44 +39,78 @@ name: coder
 runtime: codex
 
 features:
-  github:
+  - plugin: github-pat
     token: "${GITHUB_PAT}"
-  telegram:
+  - plugin: telegram
     bot_token: "${TELEGRAM_BOT_TOKEN}"
     allowed_users: ["donbader"]
-  custom-runtime:
+  - plugin: custom-runtime
     commands:
       - "apt-get install -y ripgrep fd-find"
     runtime_volumes:
       - "agent-home:/home/agent"
 ```
 
+See [examples/](examples/) for working setups.
+
 ## Architecture
 
-- **RuntimePlugin** — sets base image + agent CLI (one per agent)
-- **FeaturePlugin** — additive capabilities (multiple per agent)
-- **Gateway** — transparent proxy inside each container (iptables enforced, MITM for credential injection)
-- **Bridge** — TypeScript runtime that spawns agent as child process, loads channel plugins
+```
+┌────────────────────────────────┐
+│  agent-sandbox CLI             │
+│  Reads agent.yaml → generates  │
+│  Dockerfile + docker-compose   │
+└────────────────────────────────┘
+
+         docker compose up
+              │
+    ┌─────────┴──────────┐
+    ▼                    ▼
+┌──────────┐     ┌─────────────────────┐
+│ Gateway  │     │ Agent Container      │
+│ container│◄────│                      │
+│          │     │  Channel Manager     │
+│ - proxy  │     │  (spawns agent)      │
+│ - DNS    │     │                      │
+│ - MITM   │     │  Agent Runtime       │
+│ - creds  │     │  (codex/claude/pi)   │
+└──────────┘     └─────────────────────┘
+```
+
+- **Runtime plugins** — set base image + agent CLI (one per agent): codex, claude-code, pi
+- **Feature plugins** — additive capabilities (multiple per agent): custom-runtime, telegram, github-pat, static-header
+- **Gateway** — separate container, transparent proxy (default route enforced), MITM for credential injection
+- **Channel Manager** — TypeScript process that spawns agent as child, loads channel plugins (Telegram, etc.)
 
 ## Commands
 
 ```bash
-agent-sandbox init              # interactive scaffold
 agent-sandbox generate          # read config → write .build/ artifacts
-agent-sandbox validate          # check config
-agent-sandbox plugins           # list available plugins
-agent-sandbox upgrade           # self-update
-agent-sandbox compose ...       # docker compose passthrough
+agent-sandbox compose ...       # docker compose passthrough (up, down, logs, etc.)
 ```
+
+## Current Limitations
+
+These features are planned but not yet available:
+
+- `agent-sandbox init` — interactive project scaffold
+- `agent-sandbox validate` — config validation
+- `agent-sandbox plugins` — list available plugins
+- `agent-sandbox upgrade` — self-update
+- Docker API proxy (let agent spin up containers)
+- MCP OAuth credential flow
+- Multi-agent fleet.yaml
+
+See [Roadmap](docs/roadmap.md) for the full plan.
 
 ## Docs
 
-- [Plugin System](docs/plugin-system.md)
-- [Plugins](docs/plugins.md)
 - [Configuration](docs/configuration.md)
+- [Plugins](docs/plugins.md)
+- [Troubleshooting](docs/troubleshooting.md)
 - [Security](docs/security.md)
-- [Build & Deploy](docs/build-and-deploy.md)
-- [CLI & UX](docs/cli-and-ux.md)
+- [Plugin System](docs/plugin-system.md) (for developers)
+- [Build & Deploy](docs/build-and-deploy.md) (for developers)
 - [Decisions](docs/decisions.md)
 - [Roadmap](docs/roadmap.md)
 

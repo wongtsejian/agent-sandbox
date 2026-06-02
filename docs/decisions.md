@@ -6,9 +6,9 @@
 |---|----------|-----------|
 | 1 | Two plugin types (Runtime + Feature) | Runtime is singular (base image). Features are additive. Config reads naturally. |
 | 2 | Runtime plugins are pure data (YAML) | No CLI upgrade needed for runtime fixes. CLI is a generic template engine. |
-| 3 | Feature plugins are hybrid (YAML + code) | Metadata is data. Gateway handlers need Go. Bridge needs TypeScript. Code compiles during Docker build, not CLI build. |
+| 3 | Feature plugins are hybrid (YAML + code) | Metadata is data. Gateway handlers need Go. Channel manager needs TypeScript. Code compiles during Docker build, not CLI build. |
 | 4 | Universal gateway binary | Build once per container, configure per-agent. Handlers compiled during Docker build. |
-| 5 | Bridge always entrypoint | Agent is always a child process. No WrapCmd hack. |
+| 5 | Channel manager always entrypoint | Agent is always a child process. No WrapCmd hack. |
 | 6 | Allow-all egress default | Dev agents need unrestricted installs. MITM only where needed. |
 | 7 | Gateway inside each container | Self-contained. Per-agent config without routing complexity. |
 | 8 | Plugin updates independent of CLI | CLI ships embedded defaults. Local `plugins/` dir overrides. No CLI upgrade for plugin fixes. |
@@ -66,7 +66,7 @@
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Gateway source embedded in CLI | ~20MB added to binary | Accept it. Single binary distribution is worth the size. Bridge TypeScript adds ~5MB. |
+| Gateway source embedded in CLI | ~20MB added to binary | Accept it. Single binary distribution is worth the size. Channel manager TypeScript adds ~5MB. |
 | Plugin YAML schema changes | Existing plugins break | Semantic versioning on schema. Additive only. |
 | Multi-stage build adds time | First build ~60s | Docker layer cache. Gateway stage rarely changes. Subsequent builds ~5s. |
 | Two languages (Go + TypeScript) | Higher maintenance | Clear boundary: Go = proxy/gateway. TypeScript = messaging/channel-manager. No overlap. |

@@ -68,7 +68,7 @@ FROM node:22-slim AS channel-manager-build
 WORKDIR /src
 COPY channel-manager-src/package.json channel-manager-src/tsconfig.json ./
 RUN npm install
-COPY bridge-src/src/ ./src/
+COPY channel-manager-src/src/ ./src/
 RUN npm run build
 
 # Stage 2: Agent runtime
@@ -86,10 +86,10 @@ RUN useradd -m -s /bin/bash agent
 COPY certs/ca.crt /usr/local/share/ca-certificates/sandbox-ca.crt
 RUN update-ca-certificates
 
-# Bridge
-COPY --from=bridge-build /src/dist/ /opt/bridge/dist/
-COPY --from=bridge-build /src/node_modules/ /opt/bridge/node_modules/
-COPY bridge-config.json /opt/bridge/config.json
+# Channel Manager
+COPY --from=channel-manager-build /src/dist/ /opt/channel-manager/dist/
+COPY --from=channel-manager-build /src/node_modules/ /opt/channel-manager/node_modules/
+COPY channel-manager-config.json /opt/channel-manager/config.json
 
 # Runtime install (from runtime.yaml)
 RUN npm install -g @openai/codex
@@ -107,9 +107,9 @@ ENTRYPOINT ["/opt/entrypoint.sh"]
 CMD ["sleep", "infinity"]
 ```
 
-### Dockerfile Without Gateway/Bridge (Phase 1-2)
+### Dockerfile Without Gateway/Channel Manager (Phase 1-2)
 
-When no features need gateway or bridge, the Dockerfile is simple:
+When no features need gateway or channel manager, the Dockerfile is simple:
 
 ```dockerfile
 FROM node:22-slim
@@ -132,7 +132,7 @@ CMD ["sleep", "infinity"]
 | Content | Purpose | Size |
 |---------|---------|------|
 | Gateway core source | TCP proxy, SNI, MITM framework | ~15MB |
-| Bridge runtime | TypeScript: process spawning, plugin loader | ~5MB |
+| Channel manager runtime | TypeScript: process spawning, plugin loader | ~5MB |
 | Built-in plugin YAML | runtime.yaml + feature.yaml defaults | ~10KB |
 | Entrypoint template | Shell script template | ~2KB |
 
@@ -152,14 +152,14 @@ This means:
 - No CLI upgrade needed for gateway fixes
 - User doesn't need Go installed (Docker handles compilation)
 
-## Bridge Loading
+## Channel Manager Loading
 
-Bridge is TypeScript. Runs as the container entrypoint when channels are active:
+The channel manager is TypeScript. Runs as the container entrypoint when channels are active:
 
-1. CLI extracts bridge runtime to `.build/bridge/`
-2. CLI copies active feature `bridge/` dirs to `.build/bridge-plugins/<name>/`
-3. Bridge dynamically imports plugins at runtime from `/opt/bridge/plugins/<name>/`
-4. Bridge spawns agent CLI as child process (reads cmd from bridge-config.json)
+1. CLI extracts channel manager runtime to `.build/channel-manager-src/`
+2. CLI copies active feature `channel/` dirs to `.build/channel-manager-plugins/<name>/`
+3. Channel manager dynamically imports plugins at runtime from `/opt/channel-manager/plugins/<name>/`
+4. Channel manager spawns agent CLI as child process (reads cmd from channel-manager-config.json)
 
 ## Multi-Agent Topology
 
@@ -168,12 +168,12 @@ Bridge is TypeScript. Runs as the container entrypoint when channels are active:
 │                                                              │
 │  ┌─ coder ───────────────────────────────────────────────┐  │
 │  │  Gateway (github + docker + telegram rules)            │  │
-│  │  Bridge → codex exec                                   │  │
+│  │  Channel Manager → codex exec                              │  │
 │  └────────────────────────────────────────────────────────┘  │
 │                                                              │
 │  ┌─ reviewer ────────────────────────────────────────────┐  │
 │  │  Gateway (github + telegram rules)                     │  │
-│  │  Bridge → claude-code                                  │  │
+│  │  Channel Manager → claude-code                             │  │
 │  └────────────────────────────────────────────────────────┘  │
 │                                                              │
 │  ┌─ dind (shared) ───────────────────────────────────────┐  │
@@ -205,40 +205,37 @@ agent-sandbox/
     proxy.go, sni.go, mitm.go
     handler_interface.go    ← RequestHandler interface
 
-  bridge/                   ← Bridge runtime TypeScript (embedded in CLI)
+  channel-manager/          ← Channel manager runtime TypeScript (embedded in CLI)
     package.json
     src/index.ts, agent.ts, plugin-loader.ts, types.ts
 
-  plugins/                  ← Plugin data + code
-    codex/
-      runtime.yaml
-    claude-code/
-      runtime.yaml
-    pi/
-      runtime.yaml
-    github/
-      feature.yaml
-      gateway/handler.go, go.mod
-    telegram/
-      feature.yaml
-      gateway/handler.go, go.mod
-      bridge/src/telegram.ts, package.json
-    docker/
-      feature.yaml
-      gateway/handler.go, go.mod
-    custom-runtime/
-      feature.yaml
-    mcp-oauth/
-      feature.yaml
-      gateway/handler.go, go.mod
-    static-header/
-      feature.yaml
-      gateway/handler.go, go.mod
-
   internal/
-    generate/   ← Dockerfile + compose generation (template engine)
-    config/     ← agent.yaml + fleet.yaml parsing
-    resolve/    ← plugin resolution (local → embedded)
+    plugins/               ← Core plugins (embedded in CLI)
+      codex/
+        runtime.yaml
+      claude-code/
+        runtime.yaml
+      pi/
+        runtime.yaml
+      telegram/
+        feature.yaml
+        gateway/handler.go, go.mod
+        channel/            ← TypeScript channel implementation
+      github-pat/
+        feature.yaml
+        gateway/handler.go, go.mod
+      static-header/
+        feature.yaml
+        gateway/handler.go, go.mod
+      custom-runtime/
+        feature.yaml
+        plugin.go           ← typed Config struct
+    generate/               ← Dockerfile + compose generation (template engine)
+    config/                 ← agent.yaml + fleet.yaml parsing
+    resolve/                ← plugin resolution (local → embedded)
 
-  templates/    ← entrypoint.sh template, Dockerfile.tmpl
+  ext/
+    plugins/               ← External plugins (per-plugin versioning, user overrides)
+
+  templates/               ← entrypoint.sh template, Dockerfile.tmpl
 ```

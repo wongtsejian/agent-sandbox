@@ -46,7 +46,7 @@ Telegram API
      ↕ (real token injected by gateway)
   Gateway (MITM for api.telegram.org + agent-gateway.stx-ai.net)
      ↕
-  Bridge (grammy bot with dummy token)
+  Channel Manager (grammy bot with dummy token)
      ↕ (JSON lines on stdin/stdout)
   Agent (codex)
 ```

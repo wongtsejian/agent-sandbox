@@ -53,11 +53,11 @@ Feature plugins are hybrid — YAML metadata + optional Go code (gateway) + opti
 
 ### Credential Features
 
-| Plugin | Hosts | Injection | Has gateway/ |
-|--------|-------|-----------|-------------|
-| `github` | github.com, *.github.com | Header: `Authorization: token <PAT>` | yes |
-| `mcp-oauth` | user-defined MCP server URL | OAuth2 token refresh | yes |
-| `static-header` | user-defined endpoint | Static header injection | yes |
+| Plugin | Hosts | Injection | Has gateway/ | Status |
+|--------|-------|-----------|-------------|--------|
+| `github-pat` | github.com, *.github.com | Header: `Authorization: token <PAT>` | yes | available |
+| `static-header` | user-defined endpoint | Static header injection | yes | available |
+| `mcp-oauth` | user-defined MCP server URL | OAuth2 token refresh | yes | **planned** |
 
 Note: LLM API credentials (OpenAI, Anthropic) are handled by the runtime itself (codex device flow, claude login). No dedicated plugins needed.
 
@@ -65,17 +65,17 @@ Note: LLM API credentials (OpenAI, Anthropic) are handled by the runtime itself 
 
 Contribute both gateway rules AND channel TypeScript. One plugin, two directories.
 
-| Plugin | Gateway | Bridge |
-|--------|---------|--------|
-| `telegram` | MITM api.telegram.org, inject bot token | grammy bot, long-poll |
-| `slack` | MITM slack.com, OAuth token refresh | Slack socket mode |
+| Plugin | Gateway | Channel | Status |
+|--------|---------|---------|--------|
+| `telegram` | MITM api.telegram.org, inject bot token | grammy bot, long-poll | available |
+| `slack` | MITM slack.com, OAuth token refresh | Slack socket mode | **planned** |
 
 ### Infrastructure Features
 
-| Plugin | What it does | Has gateway/ | Has channel/ |
-|--------|-------------|-------------|-------------|
-| `docker` | DinD sidecar, DOCKER_HOST env, API validation | yes | no |
-| `custom-runtime` | Custom commands, hooks, volumes | no | no |
+| Plugin | What it does | Has gateway/ | Has channel/ | Status |
+|--------|-------------|-------------|-------------|--------|
+| `custom-runtime` | Custom commands, hooks, volumes | no | no | available |
+| `docker` | DinD sidecar, DOCKER_HOST env, API validation | yes | no | **planned** |
 
 ### custom-runtime
 
@@ -102,7 +102,7 @@ features:
 
 The `./home/` override directory (if present) is auto-staged to `/opt/home-override/` and cp'd by a built-in entrypoint hook.
 
-### mcp-oauth
+### mcp-oauth (planned)
 
 Generic OAuth2 plugin for any MCP server:
 
@@ -128,19 +128,19 @@ features:
 ```
 
 Gateway: MITM on api.telegram.org, injects bot token via URL rewrite.
-Bridge: grammy-based long-poll bot, filters by allowed_users.
+Channel Manager: grammy-based long-poll bot, filters by allowed_users.
 
-### github
+### github-pat
 
 ```yaml
 features:
-  - plugin: github
+  - plugin: github-pat
     token: "${GITHUB_PAT}"
 ```
 
 Gateway: MITM on github.com/api.github.com, injects `Authorization: token <PAT>` header.
 
-### docker
+### docker (planned)
 
 ```yaml
 features:

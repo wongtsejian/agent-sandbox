@@ -17,7 +17,7 @@ Gateway and agent run in **separate containers** connected by a Docker internal 
 │  Networks: [internal] ONLY          │
 │  No secrets, no internet access     │
 │  default route → gateway            │
-│  Runs: bridge + agent               │
+│  Runs: channel manager + agent      │
 └─────────────────────────────────────┘
 ```
 
@@ -66,7 +66,7 @@ Agent → api.github.com:443
   → Agent receives response (thinks it talked directly)
 ```
 
-Agent never sees real credentials. Bridge gets dummy tokens. Real creds exist only in the gateway container.
+Agent never sees real credentials. The channel manager gets dummy tokens. Real creds exist only in the gateway container.
 
 ### Log Redaction
 
@@ -152,7 +152,7 @@ Agent container:
 |---------|----------|
 | Gateway crashes | All TCP from agent fails (safe default). Docker restart policy recovers. |
 | Agent can't resolve gateway | Entrypoint fails fast with clear error. Container won't start. |
-| Bridge crashes | Agent dies (child). Docker restart policy recovers. |
+| Channel manager crashes | Agent dies (child). Docker restart policy recovers. |
 | DinD crashes | Docker commands fail. Agent retries. |
 
 ## Security Comparison

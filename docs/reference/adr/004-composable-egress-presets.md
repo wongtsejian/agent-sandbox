@@ -1,7 +1,7 @@
 # ADR-004: Composable Egress Presets Over Single Gateway
 
 ## Status
-Accepted
+Superseded — concept lives on in agent-sandbox's plugin-based feature system. Each feature plugin declares its own gateway hosts in `feature.yaml`. Agents compose features instead of egress presets. The `egress-presets:` config syntax described below is not used.
 
 ## Context
 Agents need egress rules for different purposes:

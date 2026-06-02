@@ -157,7 +157,7 @@ Refer to docs/roadmap.md for the phased implementation plan.
 - Runtime plugins are pure data (YAML) — no Go code
 - Feature plugins are hybrid (YAML + optional Go gateway + optional TypeScript channel)
 - Gateway handlers compile during Docker build, not CLI build
-- Bridge spawns agent as child process, loads channel plugins dynamically
+- Channel manager spawns agent as child process, loads channel plugins dynamically
 - Ephemeral by default — containers start fresh every restart
 - All credentials through gateway — real creds never in container env
 
