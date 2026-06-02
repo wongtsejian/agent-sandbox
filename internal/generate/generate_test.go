@@ -315,7 +315,7 @@ func TestGenerator_Run(t *testing.T) {
 			},
 			Gateway: true,
 			GatewaySpec: GatewaySpec{
-				BuildImage: "golang:1.26-alpine",
+				BuildImage: "golang:1.26.4-alpine",
 				BinaryPath: "/gateway",
 				ListenPort: 8443,
 				DNSPort:    5353,
@@ -331,7 +331,7 @@ func TestGenerator_Run(t *testing.T) {
 		dfGw, err := os.ReadFile(filepath.Join(outDir, "Dockerfile.gateway"))
 		require.NoError(t, err)
 		dfGwStr := string(dfGw)
-		assert.Contains(t, dfGwStr, "FROM golang:1.26-alpine AS builder")
+		assert.Contains(t, dfGwStr, "FROM golang:1.26.4-alpine AS builder")
 		assert.Contains(t, dfGwStr, "COPY gateway-src/ .")
 		assert.Contains(t, dfGwStr, "RUN go mod tidy && go build -o /gateway ./cmd/gateway/")
 		assert.Contains(t, dfGwStr, "COPY --from=builder /gateway /usr/local/bin/gateway")
@@ -427,7 +427,7 @@ func TestGenerator_Run(t *testing.T) {
 			Gateway: true,
 			ChannelManager:  true,
 			GatewaySpec: GatewaySpec{
-				BuildImage: "golang:1.26-alpine",
+				BuildImage: "golang:1.26.4-alpine",
 				BinaryPath: "/gateway",
 				ListenPort: 8443,
 				DNSPort:    5353,
@@ -560,7 +560,7 @@ func TestGenerator_DockerfileLayerOrder(t *testing.T) {
 			Gateway:        true,
 			ChannelManager: true,
 			GatewaySpec: GatewaySpec{
-				BuildImage: "golang:1.26-alpine",
+				BuildImage: "golang:1.26.4-alpine",
 				BinaryPath: "/gateway",
 				ListenPort: 8443,
 				DNSPort:    5353,

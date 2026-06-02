@@ -39,6 +39,6 @@ func (g *Generator) writeGatewaySource() error {
 	}
 
 	// Generate go.mod for Docker build context
-	goMod := "module github.com/donbader/agent-sandbox/gateway\n\ngo 1.26.0\n\nrequire gopkg.in/yaml.v3 v3.0.1\n"
+	goMod := "module github.com/donbader/agent-sandbox/gateway\n\ngo 1.26.4\n\nrequire gopkg.in/yaml.v3 v3.0.1\n"
 	return os.WriteFile(filepath.Join(destDir, "go.mod"), []byte(goMod), 0644)
 }
