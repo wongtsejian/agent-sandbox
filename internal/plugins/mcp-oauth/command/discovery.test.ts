@@ -2,6 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { discoverAuthServer } from "./discovery.js";
 
 const mockFetch = vi.fn();
+const mockLog = {
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  child: vi.fn(() => mockLog),
+};
 
 beforeEach(() => {
   vi.stubGlobal("fetch", mockFetch);
@@ -26,10 +33,11 @@ describe("discoverAuthServer", () => {
       json: async () => metadata,
     });
 
-    const result = await discoverAuthServer("https://mcp.example.com/v1/sse");
+    const result = await discoverAuthServer("https://mcp.example.com/v1/sse", mockLog);
 
     expect(mockFetch).toHaveBeenCalledWith(
       "https://mcp.example.com/.well-known/oauth-authorization-server",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(result).toEqual(metadata);
   });
@@ -41,7 +49,7 @@ describe("discoverAuthServer", () => {
       statusText: "Not Found",
     });
 
-    await expect(discoverAuthServer("https://mcp.example.com/v1")).rejects.toThrow(
+    await expect(discoverAuthServer("https://mcp.example.com/v1", mockLog)).rejects.toThrow(
       "OAuth discovery failed for https://mcp.example.com/.well-known/oauth-authorization-server: HTTP 404 Not Found",
     );
   });
@@ -52,9 +60,25 @@ describe("discoverAuthServer", () => {
       json: async () => ({ issuer: "https://auth.example.com" }),
     });
 
-    await expect(discoverAuthServer("https://mcp.example.com/api")).rejects.toThrow(
+    await expect(discoverAuthServer("https://mcp.example.com/api", mockLog)).rejects.toThrow(
       "missing authorization_endpoint or token_endpoint",
     );
+  });
+
+  it("passes an AbortSignal for timeout", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        issuer: "https://auth.example.com",
+        authorization_endpoint: "https://auth.example.com/authorize",
+        token_endpoint: "https://auth.example.com/token",
+      }),
+    });
+
+    await discoverAuthServer("https://mcp.example.com/mcp", mockLog);
+
+    const options = mockFetch.mock.calls[0][1];
+    expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("uses origin of the MCP URL for well-known path", async () => {
@@ -67,10 +91,11 @@ describe("discoverAuthServer", () => {
       }),
     });
 
-    await discoverAuthServer("https://mcp.example.com:8443/some/deep/path?query=1");
+    await discoverAuthServer("https://mcp.example.com:8443/some/deep/path?query=1", mockLog);
 
     expect(mockFetch).toHaveBeenCalledWith(
       "https://mcp.example.com:8443/.well-known/oauth-authorization-server",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 });
