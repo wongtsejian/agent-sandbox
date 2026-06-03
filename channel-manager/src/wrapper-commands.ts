@@ -9,7 +9,14 @@ import { cpus, totalmem, freemem } from "node:os";
 export interface WrapperCommandContext {
   agentCmd: string[];
   perfHistory: number[];
+  cwd: string;
 }
+
+/** Metadata for wrapper commands, used for bot menu registration. */
+export const WRAPPER_COMMANDS = [
+  { name: "sh", description: "Run a shell command in the container" },
+  { name: "diagnose", description: "Show agent diagnostics and performance stats" },
+] as const;
 
 /**
  * Attempt to handle a wrapper command.
@@ -19,20 +26,20 @@ export function handleWrapperCommand(text: string, ctx: WrapperCommandContext): 
   const trimmed = text.trim();
 
   if (trimmed === "/sh") return "Usage: /sh <command>";
-  if (trimmed.startsWith("/sh ")) return handleSh(trimmed.slice(4).trim());
+  if (trimmed.startsWith("/sh ")) return handleSh(trimmed.slice(4).trim(), ctx.cwd);
   if (trimmed === "/diagnose") return handleDiagnose(ctx);
 
   return null;
 }
 
-function handleSh(cmd: string): string {
+function handleSh(cmd: string, cwd: string): string {
   if (!cmd) return "Usage: /sh <command>";
   try {
     const output = execSync(cmd, {
       timeout: 30_000,
       maxBuffer: 1024 * 1024,
       encoding: "utf-8",
-      cwd: process.env.HOME ?? "/workspace",
+      cwd,
     });
     return output.trim().slice(0, 4000) || "(no output)";
   } catch (err: unknown) {

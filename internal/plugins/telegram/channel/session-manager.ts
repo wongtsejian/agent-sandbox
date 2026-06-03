@@ -12,10 +12,12 @@ const DEFAULT_MAX_SESSIONS = 1000;
 export class SessionManager {
   private sessions = new Map<number, string>();
   private agent: AcpAgent;
+  private readonly cwd: string;
   private readonly maxSessions: number;
 
-  constructor(agent: AcpAgent, maxSessions = DEFAULT_MAX_SESSIONS) {
+  constructor(agent: AcpAgent, cwd: string, maxSessions = DEFAULT_MAX_SESSIONS) {
     this.agent = agent;
+    this.cwd = cwd;
     this.maxSessions = maxSessions;
   }
 
@@ -32,7 +34,7 @@ export class SessionManager {
     const conn = this.agent.getConnection();
     if (!conn) throw new Error("Agent not connected");
 
-    const result = await conn.newSession({ cwd: "/home/agent", mcpServers: [] });
+    const result = await conn.newSession({ cwd: this.cwd, mcpServers: [] });
     const sessionId = result.sessionId;
     this.sessions.set(chatId, sessionId);
     this.evict();

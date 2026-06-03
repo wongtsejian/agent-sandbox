@@ -2,6 +2,7 @@
 name: coder
 runtime: codex
 log_level: debug
+workdir: "{{ .AGENT_HOME }}/workspace"
 features:
   - plugin: telegram
     bot_token: ${TELEGRAM_BOT_TOKEN}

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/donbader/agent-sandbox/internal/config"
@@ -74,6 +75,11 @@ func generateSingle(dir string) error {
 		return err
 	}
 
+	// Ensure schema comment in agent.yaml
+	if err := ensureSchemaComment(filepath.Join(dir, "agent.yaml"), ".build/schema.json"); err != nil {
+		return err
+	}
+
 	fmt.Printf("Generated artifacts in %s\n", outDir)
 	return nil
 }
@@ -116,6 +122,13 @@ func generateFleet(dir string) error {
 		if err := generateAgent(agentDir, agentOutDir, cfg, &fleet.Shared, true); err != nil {
 			return fmt.Errorf("agent %q: %w", agentName, err)
 		}
+
+		// Ensure schema comment in sub-agent's agent.yaml
+		schemaRel := filepath.Join("..", ".build", agentName, "schema.json")
+		if err := ensureSchemaComment(filepath.Join(agentDir, "agent.yaml"), schemaRel); err != nil {
+			return fmt.Errorf("agent %q: schema comment: %w", agentName, err)
+		}
+
 		agentNames = append(agentNames, agentName)
 	}
 
@@ -124,8 +137,20 @@ func generateFleet(dir string) error {
 		return err
 	}
 
-	// Generate fleet-level .env.example (single file at fleet root)
+	// Sort env vars for stable output
+	sort.Strings(allEnvVars)
+
 	if err := writeFleetEnvExample(dir, allEnvVars); err != nil {
+		return err
+	}
+
+	// Generate fleet-level schema for fleet.yaml
+	if err := generate.WriteFleetSchema(outDir); err != nil {
+		return err
+	}
+
+	// Ensure schema comment in fleet.yaml
+	if err := ensureSchemaComment(filepath.Join(dir, "fleet.yaml"), ".build/fleet-schema.json"); err != nil {
 		return err
 	}
 
@@ -216,6 +241,31 @@ func writeFleetEnvExample(dir string, envVars []string) error {
 
 	path := filepath.Join(dir, ".env.example")
 	return os.WriteFile(path, []byte(b.String()), 0644)
+}
+
+// ensureSchemaComment ensures the yaml-language-server schema comment is correct
+// in the given YAML file. Inserts or replaces the first line if needed.
+func ensureSchemaComment(yamlPath string, schemaRelPath string) error {
+	data, err := os.ReadFile(yamlPath)
+	if err != nil {
+		return err
+	}
+
+	expected := fmt.Sprintf("# yaml-language-server: $schema=%s", schemaRelPath)
+	lines := strings.SplitAfter(string(data), "\n")
+
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == expected {
+		return nil // already correct
+	}
+
+	// Check if first line is an existing schema comment that needs replacing
+	if len(lines) > 0 && strings.HasPrefix(strings.TrimSpace(lines[0]), "# yaml-language-server: $schema=") {
+		lines[0] = expected + "\n"
+	} else {
+		lines = append([]string{expected + "\n"}, lines...)
+	}
+
+	return os.WriteFile(yamlPath, []byte(strings.Join(lines, "")), 0644)
 }
 
 func composeCmd(dir *string) *cobra.Command {

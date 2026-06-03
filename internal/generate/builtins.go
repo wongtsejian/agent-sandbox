@@ -49,6 +49,19 @@ func resolveBuiltins(s string, runtime *resolve.RuntimeConfig) string {
 
 // resolveFeatureBuiltins resolves built-in variables in all feature contribution string values.
 func (g *Generator) resolveFeatureBuiltins() {
+	// Resolve agent home and workdir.
+	agentHome := fmt.Sprintf("/home/%s", g.Runtime.User)
+	g.AgentHome = agentHome
+	workdir := ""
+	if g.Config != nil {
+		workdir = g.Config.Workdir
+	}
+	if workdir == "" {
+		g.Workdir = agentHome
+	} else {
+		g.Workdir = resolveBuiltins(workdir, g.Runtime)
+	}
+
 	for _, f := range g.Features {
 		for i, cmd := range f.Commands {
 			f.Commands[i] = resolveBuiltins(cmd, g.Runtime)

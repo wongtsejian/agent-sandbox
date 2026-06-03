@@ -12,4 +12,4 @@ features:
       - "apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find && rm -rf /var/lib/apt/lists/*"
       - "npm install -g typescript"
     runtime_volumes:
-      - "coder-home:/home/agent"
+      - "coder-home:{{ .AGENT_HOME }}"

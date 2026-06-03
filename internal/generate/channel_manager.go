@@ -251,6 +251,7 @@ func (g *Generator) writeChannelConfig() error {
 	config := map[string]any{
 		"channel":     channel,
 		"acp_command": g.Runtime.AcpCmd,
+		"cwd":         g.Workdir,
 	}
 
 	// Pass plugin-specific config to channel-manager (generic — no plugin knowledge here)
