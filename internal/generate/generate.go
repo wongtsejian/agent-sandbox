@@ -30,6 +30,8 @@ type Generator struct {
 	ChannelManagerSpec  ChannelManagerSpec  // injected build spec
 	Dir         string      // source directory (where agent.yaml lives)
 	OutDir      string      // output directory (.build/)
+	Workdir     string      // resolved working directory inside the container
+	AgentHome   string      // resolved agent home directory (e.g., /home/agent)
 }
 
 // validate checks for misconfigurations before generating artifacts.
