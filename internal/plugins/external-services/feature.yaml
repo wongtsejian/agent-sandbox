@@ -1,0 +1,2 @@
+name: external-services
+description: Connect the agent to pre-existing Docker containers via external networks.
