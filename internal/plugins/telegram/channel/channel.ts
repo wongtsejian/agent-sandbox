@@ -176,7 +176,7 @@ export class TelegramChannel implements Channel {
           );
         },
       },
-      { throttleMs: 1000, bufferMs: 300 },
+      { editIntervalMs: 2000, draftDebounceMs: 1000 },
     );
 
     try {
@@ -213,8 +213,14 @@ export class TelegramChannel implements Channel {
         break;
       case "agent_message_chunk":
         if (update.content.type === "text") {
-          log.debug({ len: update.content.text.length }, "agent_message_chunk");
-          stream.pushText(update.content.text);
+          const text = update.content.text;
+          // Filter out runtime startup banners (e.g. "pi v0.78.0\n---\n")
+          if (/^\s*\S+\s+v\d+\.\d+\.\d+\s*\n---\s*\n?$/.test(text)) {
+            log.debug({ text: text.trim() }, "filtered runtime banner");
+            break;
+          }
+          log.debug({ len: text.length }, "agent_message_chunk");
+          stream.pushText(text);
         }
         break;
       case "user_message_chunk":
