@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"os/exec"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -60,15 +61,24 @@ func TestDetect_FallbackFromPath(t *testing.T) {
 }
 
 func TestDetect_ComposeCmdDocker(t *testing.T) {
-	d := buildDetected(Docker)
-
+	d, err := buildDetected(Docker)
+	require.NoError(t, err)
 	assert.Equal(t, []string{"docker", "compose"}, d.ComposeCmd)
 }
 
 func TestDetect_ComposeCmdPodman(t *testing.T) {
-	d := buildDetected(Podman)
-
-	assert.Equal(t, []string{"podman", "compose"}, d.ComposeCmd)
+	if _, err := exec.LookPath("podman"); err != nil {
+		t.Skip("podman not on PATH")
+	}
+	d, err := buildDetected(Podman)
+	if err != nil {
+		t.Skipf("podman compose not available: %v", err)
+	}
+	// Assert that ComposeCmd is one of the valid forms
+	assert.True(t,
+		(len(d.ComposeCmd) == 2 && d.ComposeCmd[0] == "podman" && d.ComposeCmd[1] == "compose") ||
+			(len(d.ComposeCmd) == 1 && d.ComposeCmd[0] == "podman-compose"),
+		"unexpected ComposeCmd: %v", d.ComposeCmd)
 }
 
 func TestDetectOrDefault_ReturnsDocker(t *testing.T) {

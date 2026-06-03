@@ -2,9 +2,11 @@
 package runtime
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 )
 
 // Runtime identifies a container runtime engine.
@@ -52,12 +54,12 @@ func detectFromEnv(val string) (*Detected, error) {
 		if _, err := exec.LookPath("docker"); err != nil {
 			return nil, fmt.Errorf("CONTAINER_RUNTIME set to %q but binary not found on PATH", val)
 		}
-		return buildDetected(Docker), nil
+		return buildDetected(Docker)
 	case Podman:
 		if _, err := exec.LookPath("podman"); err != nil {
 			return nil, fmt.Errorf("CONTAINER_RUNTIME set to %q but binary not found on PATH", val)
 		}
-		return buildDetected(Podman), nil
+		return buildDetected(Podman)
 	default:
 		return nil, fmt.Errorf("unsupported CONTAINER_RUNTIME value %q: must be \"docker\" or \"podman\"", val)
 	}
@@ -65,22 +67,26 @@ func detectFromEnv(val string) (*Detected, error) {
 
 func detectFromPath() (*Detected, error) {
 	if _, err := exec.LookPath("podman"); err == nil {
-		return buildDetected(Podman), nil
+		return buildDetected(Podman)
 	}
 	if _, err := exec.LookPath("docker"); err == nil {
-		return buildDetected(Docker), nil
+		return buildDetected(Docker)
 	}
 	return nil, fmt.Errorf("no container runtime found: install docker or podman and ensure it is on PATH")
 }
 
-func buildDetected(rt Runtime) *Detected {
+func buildDetected(rt Runtime) (*Detected, error) {
 	binary := string(rt)
 	composeCmd := []string{binary, "compose"}
 
 	if rt == Podman {
-		if err := exec.Command("podman", "compose", "version").Run(); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := exec.CommandContext(ctx, "podman", "compose", "version").Run(); err != nil {
 			if _, err2 := exec.LookPath("podman-compose"); err2 == nil {
 				composeCmd = []string{"podman-compose"}
+			} else {
+				return nil, fmt.Errorf("podman found but no compose capability: install podman-compose or the podman compose plugin")
 			}
 		}
 	}
@@ -89,5 +95,5 @@ func buildDetected(rt Runtime) *Detected {
 		Runtime:    rt,
 		Binary:     binary,
 		ComposeCmd: composeCmd,
-	}
+	}, nil
 }
