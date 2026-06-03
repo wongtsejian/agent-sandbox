@@ -139,7 +139,7 @@ func TestExternalServices_DockerMissingNetworkError(t *testing.T) {
 func TestExternalServices_UnsupportedSchemeError(t *testing.T) {
 	_, err := resolve.ResolveFeature(".", "external-services", "external-services", map[string]any{
 		"services": []any{
-			map[string]any{"url": "http://foo.com", "network": "n"},
+			map[string]any{"url": "ftp://foo.com"},
 		},
 	})
 	assert.Error(t, err)
