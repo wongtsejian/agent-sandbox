@@ -31,11 +31,13 @@ type GatewayConfigBuilder struct {
 
 // buildGatewayConfigBuilder constructs a GatewayConfigBuilder from the Generator state.
 func (g *Generator) buildGatewayConfigBuilder() *GatewayConfigBuilder {
+	mitmDomains, _ := g.splitDomainsByScheme()
+
 	gcb := &GatewayConfigBuilder{
 		ListenPort:     g.GatewaySpec.ListenPort,
 		HTTPListenPort: g.GatewaySpec.HTTPListenPort,
 		DNSPort:        g.GatewaySpec.DNSPort,
-		MITMDomains:    g.collectMITMDomains(),
+		MITMDomains:    mitmDomains,
 		HTTPServices:   g.collectHTTPServices(),
 		Rewriters:      g.collectRewriters(),
 	}

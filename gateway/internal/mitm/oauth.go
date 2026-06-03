@@ -69,14 +69,16 @@ func NewOAuthRewriter(domains []string, tokenFile string) (*OAuthRewriter, error
 }
 
 // RewriteRequest injects a Bearer Authorization header if the request host matches
-// one of the configured domains. Returns true if the header was injected.
+// one of the configured domains. Supports both bare hostnames and host:port entries
+// for port-aware matching. Returns true if the header was injected.
 func (r *OAuthRewriter) RewriteRequest(req *http.Request) bool {
 	host := req.Host
+	bareHost := host
 	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
+		bareHost = h
 	}
 
-	matched := slices.Contains(r.domains, host)
+	matched := slices.Contains(r.domains, host) || slices.Contains(r.domains, bareHost)
 	if !matched {
 		return false
 	}

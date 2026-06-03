@@ -159,15 +159,16 @@ func (g *Generator) collectVolumePaths() []string {
 }
 
 // collectRewriters gathers all rewriter configs from features.
-// Domains are normalized to bare hostnames (no scheme, no port) so that
-// the gateway's AuthHeaderRewriter can match against request Host headers.
+// Domains are normalized to strip the scheme but preserve host:port so that
+// the gateway's AuthHeaderRewriter can do port-aware matching (two services
+// on the same host with different ports get distinct rewriters).
 func (g *Generator) collectRewriters() []resolve.RewriterConfig {
 	var rewriters []resolve.RewriterConfig
 	for _, f := range g.Features {
 		for _, rw := range f.Rewriters {
 			normalized := make([]string, 0, len(rw.Domains))
 			for _, d := range rw.Domains {
-				normalized = append(normalized, stripSchemeAndPort(d))
+				normalized = append(normalized, stripScheme(d))
 			}
 			rw.Domains = normalized
 			rewriters = append(rewriters, rw)
@@ -219,15 +220,24 @@ func (g *Generator) collectHTTPPorts() []string {
 	return ports
 }
 
-// stripSchemeAndPort extracts the bare hostname from a domain string that may
-// include a scheme and/or port (e.g. "http://host.internal:8000" -> "host.internal").
-func stripSchemeAndPort(d string) string {
+// stripScheme removes the URL scheme from a domain string but preserves the
+// host:port so that port-aware matching works correctly in the gateway.
+// e.g. "http://host.internal:8000" -> "host.internal:8000"
+// e.g. "https://api.github.com" -> "api.github.com"
+func stripScheme(d string) string {
 	if strings.Contains(d, "://") {
 		parsed, err := url.Parse(d)
 		if err == nil {
-			d = parsed.Host
+			return parsed.Host
 		}
 	}
+	return d
+}
+
+// stripSchemeAndPort extracts the bare hostname from a domain string that may
+// include a scheme and/or port (e.g. "http://host.internal:8000" -> "host.internal").
+func stripSchemeAndPort(d string) string {
+	d = stripScheme(d)
 	if h, _, err := net.SplitHostPort(d); err == nil {
 		return h
 	}
