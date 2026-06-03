@@ -14,7 +14,8 @@ type ComposeBuilder struct {
 	AgentName      string
 	GatewayName    string
 	LogLevel       string
-	Ports          []string
+	Ports          []string // runtime ports (on gateway in gateway mode, on agent in single mode)
+	AgentPorts     []string // feature-contributed ports (always on agent)
 	Volumes        []string
 	NamedVolumes   []string
 	EnvVars        []string
@@ -22,23 +23,32 @@ type ComposeBuilder struct {
 	HasMITM        bool
 	GatewayCertDir string
 	Podman         bool
+	Capabilities   []string // additional capabilities from features
 }
 
 // buildComposeBuilder constructs a ComposeBuilder from the Generator state.
 func (g *Generator) buildComposeBuilder() *ComposeBuilder {
 	// Runtime detection is host-specific — artifacts must be regenerated when switching runtimes.
 	rt := runtime.DetectOrDefault()
+
+	// Merge runtime ports with feature-contributed ports
+	runtimePorts := append([]string{}, g.Runtime.Ports...)
+	featurePorts := g.collectFeaturePorts()
+
 	cb := &ComposeBuilder{
-		AgentName: g.Config.Name,
-		LogLevel:  g.logLevel(),
-		Ports:     g.Runtime.Ports,
-		EnvVars:   g.mergedEnvVars(),
-		Podman:    rt.Runtime == runtime.Podman,
+		AgentName:    g.Config.Name,
+		LogLevel:     g.logLevel(),
+		Ports:        append(runtimePorts, featurePorts...),
+		AgentPorts:   featurePorts,
+		EnvVars:      g.mergedEnvVars(),
+		Podman:       rt.Runtime == runtime.Podman,
+		Capabilities: g.collectCapabilities(),
 	}
 
 	if g.Gateway {
 		cb.Variant = "gateway"
 		cb.GatewayName = g.Config.Name + "-gateway"
+		cb.Ports = runtimePorts // gateway only gets runtime ports
 		cb.AgentEnv = g.collectAgentEnv()
 		cb.HasMITM = g.hasMITMDomains()
 		cb.GatewayCertDir = gatewayCertDir

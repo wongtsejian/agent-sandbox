@@ -22,11 +22,13 @@ type RewriterConfig struct {
 
 // Config holds gateway configuration.
 type Config struct {
-	Listen       string           `yaml:"listen"`        // TCP listen address (e.g., ":8443")
-	DNSListen    string           `yaml:"dns_listen"`    // DNS listen address (e.g., ":53")
-	MITMDomains  []string         `yaml:"mitm_domains"`  // domains to MITM (terminate TLS)
-	Rewriters    []RewriterConfig `yaml:"rewriters"`     // rewriters to apply to intercepted requests
-	PortForwards []PortForward    `yaml:"port_forwards"` // TCP port forwards to agent container
+	Listen       string           `yaml:"listen"`         // TCP listen address (e.g., ":8443")
+	HTTPListen   string           `yaml:"http_listen"`    // HTTP proxy listen address (e.g., ":8080")
+	DNSListen    string           `yaml:"dns_listen"`     // DNS listen address (e.g., ":53")
+	MITMDomains  []string         `yaml:"mitm_domains"`   // domains to MITM (terminate TLS)
+	HTTPDomains  []string         `yaml:"http_domains"`   // domains to intercept via HTTP proxy
+	Rewriters    []RewriterConfig `yaml:"rewriters"`      // rewriters to apply to intercepted requests
+	PortForwards []PortForward    `yaml:"port_forwards"`  // TCP port forwards to agent container
 }
 
 // PortForward defines a TCP port forward from the gateway to the agent.
@@ -59,6 +61,9 @@ func LoadConfig(path string) (*Config, error) {
 
 	if cfg.Listen == "" {
 		cfg.Listen = ":8443"
+	}
+	if cfg.HTTPListen == "" {
+		cfg.HTTPListen = ":8080"
 	}
 	if cfg.DNSListen == "" {
 		cfg.DNSListen = ":53"

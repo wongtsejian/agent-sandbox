@@ -50,8 +50,14 @@ services:
       - SETUID         # drop from root to agent user after init
       - SETGID         # drop from root to agent group after init
       - FOWNER         # set permissions on agent home directory
-{{- if .Podman }}
-    userns_mode: keep-id
+{{- range .Capabilities }}
+      - {{ . }}
+{{- end }}
+{{- if .AgentPorts }}
+    ports:
+{{- range .AgentPorts }}
+      - {{ quote . }}
+{{- end }}
 {{- end }}
     sysctls:
       - net.ipv4.conf.all.route_localnet=1
