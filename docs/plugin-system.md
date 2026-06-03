@@ -35,10 +35,11 @@ internal/plugins/
     feature.yaml            ← metadata, config schema, hosts
     plugin.go
     plugin_test.go
-  static-header/
+  external-services/
     feature.yaml
     plugin.go
     plugin_test.go
+    README.md
   custom-runtime/
     feature.yaml            ← metadata, config schema
     plugin.go               ← no gateway, no channel — pure config-driven

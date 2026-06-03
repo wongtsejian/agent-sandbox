@@ -91,16 +91,15 @@ features:
     commands: ["apt-get update && apt-get install -y --no-install-recommends ripgrep && rm -rf /var/lib/apt/lists/*"]
     entrypoint_hooks: [./scripts/setup.sh]
     runtime_volumes: ["agent-home:/home/agent"]
-  - plugin: static-header
-    name: stx-llm-gateway                # optional instance name for logs
-    domains: ["agent-gateway.stx-ai.net"]
-    header: "Authorization"
+  - plugin: external-services
+    services:
+      - url: "https://agent-gateway.stx-ai.net"
+        headers:
+          Authorization: Bearer ${STX_LLM_GATEWAY_API_KEY}
   - plugin: mcp-oauth
     providers:
       notion:
         mcp_url: https://mcp.notion.com/mcp
-    value_format: "Bearer ${value}"
-    env_var: "STX_LLM_GATEWAY_API_KEY"
 ```
 
 `true` is shorthand for `{}` (enable with all defaults). CLI validates against each feature's `ConfigSchema()`.

@@ -308,12 +308,13 @@ func pluginsCmd() *cobra.Command {
 
 func describePlugin(name string, plugin resolve.FeaturePlugin) string {
 	descriptions := map[string]string{
-		"custom-runtime": "Custom packages, startup hooks, persistent volumes",
-		"telegram":       "Telegram bot channel via gateway MITM",
-		"github-pat":     "GitHub PAT injection via gateway MITM",
-		"static-header":  "Static header injection for any endpoint",
-		"claude-code":    "Anthropic Claude Code runtime configuration",
-		"pi":             "Pi coding agent runtime configuration",
+		"custom-runtime":    "Custom packages, startup hooks, persistent volumes",
+		"telegram":          "Telegram bot channel via gateway MITM",
+		"github-pat":        "GitHub PAT injection via gateway MITM",
+		"external-services": "Connect to external services with optional header injection",
+		"claude-code":       "Anthropic Claude Code runtime configuration",
+		"pi":                "Pi coding agent runtime configuration",
+		"mcp-oauth":         "OAuth token injection for remote MCP servers",
 	}
 	if desc, ok := descriptions[name]; ok {
 		return desc

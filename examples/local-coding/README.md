@@ -4,7 +4,7 @@ A sandboxed codex agent for local machine coding, with LLM API access routed thr
 
 ## What's Included
 
-- **static-header** (instance: stx-llm-gateway) — gateway intercepts requests to `agent-gateway.stx-ai.net` and injects your real API key via MITM. The agent only sees a dummy bearer token.
+- **external-services** — gateway intercepts HTTPS requests to `agent-gateway.stx-ai.net` via MITM and injects your real API key. The agent never sees the credential.
 - **custom-runtime** — overlays codex configuration (model catalog, provider settings) into the agent's home directory.
 
 ## Setup

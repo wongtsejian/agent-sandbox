@@ -5,7 +5,7 @@ Everything from `local-coding` plus a Telegram bot channel — talk to your codi
 ## What's Included
 
 - **telegram** — channel plugin that connects a Telegram bot to the agent via ACP protocol (JSON lines on stdin/stdout).
-- **static-header** (instance: stx-llm-gateway) — gateway intercepts requests to `agent-gateway.stx-ai.net` and injects your real API key via MITM.
+- **external-services** — gateway intercepts HTTPS requests to `agent-gateway.stx-ai.net` via MITM and injects your real API key.
 - **mcp-oauth** (notion) — OAuth token injection for Notion MCP server. Tokens managed via `/oauth` command.
 - **custom-runtime** — overlays codex configuration into the agent's home directory.
 

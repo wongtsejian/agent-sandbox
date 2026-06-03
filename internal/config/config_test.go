@@ -36,19 +36,19 @@ features:
 name: coder
 runtime: codex
 features:
-  - plugin: static-header
-    name: stx-llm-gateway
-    domains: ["agent-gateway.stx-ai.net"]
-    header: "Authorization"
+  - plugin: external-services
+    name: my-services
+    services:
+      - url: "docker://redis:6379"
+        network: my-net
 `), 0644)
 		require.NoError(t, err)
 
 		cfg, err := Load(dir)
 		require.NoError(t, err)
 		require.Len(t, cfg.Features, 1)
-		assert.Equal(t, "static-header", cfg.Features[0].Plugin)
-		assert.Equal(t, "stx-llm-gateway", cfg.Features[0].Name)
-		assert.Equal(t, "Authorization", cfg.Features[0].Config["header"])
+		assert.Equal(t, "external-services", cfg.Features[0].Plugin)
+		assert.Equal(t, "my-services", cfg.Features[0].Name)
 		// name and plugin should not leak into Config
 		_, hasPlugin := cfg.Features[0].Config["plugin"]
 		_, hasName := cfg.Features[0].Config["name"]
