@@ -286,9 +286,15 @@ func expandFleetComposeFiles(buildDir, composePath string) []string {
 		if strings.HasPrefix(line, "- ") {
 			rel := strings.TrimPrefix(line, "- ")
 			rel = strings.TrimSpace(rel)
-			abs := filepath.Join(buildDir, rel)
+			abs := filepath.Join(buildDir, filepath.Clean(rel))
+			if !strings.HasPrefix(abs, filepath.Clean(buildDir)+string(os.PathSeparator)) {
+				fmt.Fprintf(os.Stderr, "Warning: fleet compose path %q escapes build directory, skipping\n", rel)
+				continue
+			}
 			if _, err := os.Stat(abs); err == nil {
 				files = append(files, abs)
+			} else {
+				fmt.Fprintf(os.Stderr, "Warning: fleet compose references %q but file not found\n", rel)
 			}
 		}
 	}

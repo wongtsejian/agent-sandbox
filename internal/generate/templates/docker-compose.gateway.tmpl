@@ -9,8 +9,8 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN
-      - NET_BIND_SERVICE
+      - NET_ADMIN          # iptables rules for transparent proxy
+      - NET_BIND_SERVICE   # bind to ports < 1024
     sysctls:
       - net.ipv4.ip_forward=1
     environment:
@@ -44,12 +44,15 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN
-      - DAC_OVERRIDE
-      - CHOWN
-      - SETUID
-      - SETGID
-      - FOWNER
+      - NET_ADMIN      # iptables redirect to gateway
+      - DAC_OVERRIDE   # entrypoint file access before dropping to agent user
+      - CHOWN          # entrypoint ownership setup
+      - SETUID         # drop from root to agent user after init
+      - SETGID         # drop from root to agent group after init
+      - FOWNER         # set permissions on agent home directory
+{{- if .Podman }}
+    userns_mode: keep-id
+{{- end }}
     sysctls:
       - net.ipv4.conf.all.route_localnet=1
     environment:
