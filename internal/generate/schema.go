@@ -49,6 +49,11 @@ func buildAgentSchema() map[string]any {
 				"description": "Enable transparent gateway proxy",
 				"default":     true,
 			},
+			"workdir": map[string]any{
+				"type":        "string",
+				"description": "Working directory for the agent. Supports {{ .AGENT_HOME }} template variable. Defaults to {{ .AGENT_HOME }}.",
+				"examples":    []any{"{{ .AGENT_HOME }}/workspace", "/opt/workspace"},
+			},
 			"features": map[string]any{
 				"type":        "array",
 				"description": "Feature plugins and their configuration",
