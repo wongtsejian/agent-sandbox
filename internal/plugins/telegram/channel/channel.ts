@@ -55,7 +55,7 @@ export class TelegramChannel implements Channel {
     this.config = parseConfig(rawConfig);
     this.agent = agent;
     this.bot = new Bot(DUMMY_TOKEN);
-    this.sessions = new SessionManager(agent);
+    this.sessions = new SessionManager(agent, rawConfig.cwd as string);
 
     this.setupBot();
     this.setupCommandSync();

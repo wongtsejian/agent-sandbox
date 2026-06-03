@@ -23,6 +23,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  if (!config.cwd) {
+    log.fatal("cwd is required in channel-manager config");
+    process.exit(1);
+  }
+
   log.info(
     { channel: config.channel, cmd: config.acp_command.join(" ") },
     "starting channel manager"
@@ -31,7 +36,7 @@ async function main(): Promise<void> {
   // Create ACP agent
   const agent = new AcpAgent({
     cmd: config.acp_command,
-    cwd: config.cwd ?? "/workspace",
+    cwd: config.cwd,
   });
 
   // Load command plugins (if any are generated)
@@ -53,6 +58,7 @@ async function main(): Promise<void> {
     const wrapperResult = handleWrapperCommand(text, {
       agentCmd: config.acp_command,
       perfHistory: agent.perfHistory,
+      cwd: config.cwd,
     });
     if (wrapperResult !== null) return wrapperResult;
 
