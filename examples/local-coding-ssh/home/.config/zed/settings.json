@@ -3,7 +3,7 @@
     "codex-acp": {
       "type": "custom",
       "command": "codex-acp",
-      "args": []
-    }
-  }
+      "args": [],
+    },
+  },
 }
