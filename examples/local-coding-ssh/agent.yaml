@@ -6,6 +6,8 @@ features:
   - plugin: external-services
     services:
       - url: http://host.containers.internal:8000/v1
+        headers:
+          Authorization: Bearer ${STX_LLM_GATEWAY_API_KEY}
 
   - plugin: ssh
     port: 2222
