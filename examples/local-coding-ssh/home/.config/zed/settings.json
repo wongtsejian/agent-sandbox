@@ -1,10 +1,9 @@
 {
-  "agent": {
-    "custom_servers": {
-      "codex-acp": {
-        "command": "codex-acp",
-        "args": []
-      }
+  "agent_servers": {
+    "codex-acp": {
+      "type": "custom",
+      "command": "codex-acp",
+      "args": []
     }
   }
 }
