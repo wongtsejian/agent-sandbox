@@ -183,10 +183,14 @@ export class StreamController {
 
     // Deliver accumulated text as a NEW message
     if (this.textBuffer) {
-      const html = this.formatForSend(this.textBuffer);
-      const segments = splitMessage(html);
-      for (const segment of segments) {
-        await this.deps.sendMessage(segment, { parse_mode: "HTML" });
+      try {
+        const html = this.formatForSend(this.textBuffer);
+        const segments = splitMessage(html);
+        for (const segment of segments) {
+          await this.deps.sendMessage(segment, { parse_mode: "HTML" });
+        }
+      } catch (err: unknown) {
+        log.warn({ error: (err as Error).message ?? err }, "finalize send failed");
       }
     }
 
@@ -202,8 +206,12 @@ export class StreamController {
 
     // Deliver whatever text we have, even if partial
     if (this.textBuffer) {
-      const html = this.formatForSend(this.textBuffer);
-      await this.deps.sendMessage(html, { parse_mode: "HTML" });
+      try {
+        const html = this.formatForSend(this.textBuffer);
+        await this.deps.sendMessage(html, { parse_mode: "HTML" });
+      } catch (err: unknown) {
+        log.warn({ error: (err as Error).message ?? err }, "abort send failed");
+      }
     }
 
     this.cleanup();
@@ -221,8 +229,12 @@ export class StreamController {
   private async startWorkMessage(): Promise<void> {
     if (this.workStarted) return;
     this.workStarted = true;
-    const header = this.renderHeader();
-    this.workMessageId = await this.deps.sendMessage(header, { parse_mode: "HTML" });
+    try {
+      const header = this.renderHeader();
+      this.workMessageId = await this.deps.sendMessage(header, { parse_mode: "HTML" });
+    } catch (err: unknown) {
+      log.warn({ error: (err as Error).message ?? err }, "start work message failed");
+    }
   }
 
   private renderHeader(): string {
@@ -285,15 +297,17 @@ export class StreamController {
   private async collapseWork(): Promise<void> {
     if (!this.workState || !this.workStarted) return;
 
-    // Wait for work message to be created
     this.clearEditTimer();
     this.clearDraftTimer();
 
     if (this.workMessageId === null) return;
 
-    // Render collapsed summary
-    const collapsed = this.renderCollapsed();
-    await this.deps.editMessage(this.workMessageId, collapsed, { parse_mode: "HTML" });
+    try {
+      const collapsed = this.renderCollapsed();
+      await this.deps.editMessage(this.workMessageId, collapsed, { parse_mode: "HTML" });
+    } catch (err: unknown) {
+      log.warn({ error: (err as Error).message ?? err }, "collapse edit failed");
+    }
   }
 
   private renderCollapsed(): string {
