@@ -52,10 +52,14 @@ func (g *Generator) resolveFeatureBuiltins() {
 	// Resolve agent home and workdir.
 	agentHome := fmt.Sprintf("/home/%s", g.Runtime.User)
 	g.AgentHome = agentHome
-	if g.Config.Workdir == "" {
+	workdir := ""
+	if g.Config != nil {
+		workdir = g.Config.Workdir
+	}
+	if workdir == "" {
 		g.Workdir = agentHome
 	} else {
-		g.Workdir = resolveBuiltins(g.Config.Workdir, g.Runtime)
+		g.Workdir = resolveBuiltins(workdir, g.Runtime)
 	}
 
 	for _, f := range g.Features {
