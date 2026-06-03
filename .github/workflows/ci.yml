@@ -3,8 +3,18 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
 
 jobs:
   go:
@@ -19,12 +29,18 @@ jobs:
 
       - name: Lint
         uses: golangci/golangci-lint-action@v9
+        continue-on-error: true
+        id: lint
 
       - name: Test
-        run: go test ./...
+        run: go test -race ./...
 
       - name: Build
         run: go build ./...
+
+      - name: Fail if lint failed
+        if: steps.lint.outcome == 'failure'
+        run: exit 1
 
   typescript:
     name: TypeScript (typecheck, test)
