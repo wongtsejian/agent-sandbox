@@ -26,3 +26,4 @@ node_modules/
 .worktrees/
 .ssh/
 ssh*key
+bin/agent-sandbox
