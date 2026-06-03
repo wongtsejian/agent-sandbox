@@ -50,6 +50,10 @@ func generateCmd(dir *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "generate",
 		Short: "Generate .build/ artifacts from agent config",
+		Long: `Generate .build/ artifacts from agent config.
+
+Generated artifacts are specific to the detected container runtime (docker or
+podman). If switching runtimes, re-run generate.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Detect fleet vs single-agent mode
 			if config.HasFleetConfig(*dir) {

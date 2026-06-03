@@ -26,6 +26,7 @@ type ComposeBuilder struct {
 
 // buildComposeBuilder constructs a ComposeBuilder from the Generator state.
 func (g *Generator) buildComposeBuilder() *ComposeBuilder {
+	// Runtime detection is host-specific — artifacts must be regenerated when switching runtimes.
 	rt := runtime.DetectOrDefault()
 	cb := &ComposeBuilder{
 		AgentName: g.Config.Name,
