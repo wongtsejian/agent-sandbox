@@ -396,7 +396,7 @@ func initCmd() *cobra.Command {
 						}
 					b.WriteString("  - plugin: telegram\n")
 					b.WriteString("    access_control:\n")
-					b.WriteString(fmt.Sprintf("      allowed_users: [\"%s\"]\n", username))
+					_, _ = fmt.Fprintf(&b, "      allowed_users: [\"%s\"]\n", username)
 				case "custom-runtime":
 					b.WriteString("  - plugin: custom-runtime\n")
 					b.WriteString("    commands:\n")
@@ -413,7 +413,7 @@ func initCmd() *cobra.Command {
 			if len(envVars) > 0 {
 				var env strings.Builder
 				for _, v := range envVars {
-					env.WriteString(fmt.Sprintf("%s=\n", v))
+					_, _ = fmt.Fprintf(&env, "%s=\n", v)
 				}
 				if err := os.WriteFile(".env", []byte(env.String()), 0644); err != nil {
 					return fmt.Errorf("writing .env: %w", err)

@@ -48,7 +48,9 @@ func TestGenerateAndStore(t *testing.T) {
 
 	key, err := x509.ParseECPrivateKey(keyBlock.Bytes)
 	require.NoError(t, err)
-	assert.Equal(t, tlsCert.PrivateKey.(*ecdsa.PrivateKey).D, key.D)
+	privKey, ok := tlsCert.PrivateKey.(*ecdsa.PrivateKey)
+	require.True(t, ok)
+	assert.True(t, key.Equal(privKey))
 
 	// Verify file permissions
 	keyInfo, err := os.Stat(privateKeyPath)

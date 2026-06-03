@@ -211,15 +211,15 @@ func (g *Generator) writeGatewayDockerfile() error {
 	var b strings.Builder
 
 	// Build stage: compile gateway binary
-	b.WriteString(fmt.Sprintf("FROM %s AS builder\n", g.GatewaySpec.BuildImage))
+	_, _ = fmt.Fprintf(&b, "FROM %s AS builder\n", g.GatewaySpec.BuildImage)
 	b.WriteString("WORKDIR /src\n")
 	b.WriteString("COPY gateway-src/ .\n")
-	b.WriteString(fmt.Sprintf("RUN go mod tidy && go build -o %s ./cmd/gateway/\n\n", g.GatewaySpec.BinaryPath))
+	_, _ = fmt.Fprintf(&b, "RUN go mod tidy && go build -o %s ./cmd/gateway/\n\n", g.GatewaySpec.BinaryPath)
 
 	// Runtime stage: minimal alpine with gateway binary
 	b.WriteString("FROM alpine:3.20\n")
 	b.WriteString("RUN apk add --no-cache ca-certificates iptables\n")
-	b.WriteString(fmt.Sprintf("COPY --from=builder %s /usr/local/bin/gateway\n", g.GatewaySpec.BinaryPath))
+	_, _ = fmt.Fprintf(&b, "COPY --from=builder %s /usr/local/bin/gateway\n", g.GatewaySpec.BinaryPath)
 	b.WriteString("COPY gateway-config.yaml /etc/gateway/config.yaml\n")
 
 	if g.hasMITMDomains() {
@@ -241,25 +241,25 @@ func (g *Generator) writeAgentDockerfile() error {
 
 	// Bridge build stage (if enabled)
 	if g.ChannelManager {
-		b.WriteString(fmt.Sprintf("FROM %s AS channel-manager-build\n", g.ChannelManagerSpec.BuildImage))
+		_, _ = fmt.Fprintf(&b, "FROM %s AS channel-manager-build\n", g.ChannelManagerSpec.BuildImage)
 		b.WriteString("WORKDIR /src\n")
 		b.WriteString("COPY channel-manager-src/package.json channel-manager-src/tsconfig.json ./\n")
-		b.WriteString(fmt.Sprintf("RUN %s\n", g.ChannelManagerSpec.InstallCmd))
+		_, _ = fmt.Fprintf(&b, "RUN %s\n", g.ChannelManagerSpec.InstallCmd)
 		b.WriteString("COPY channel-manager-src/src/ ./src/\n")
-		b.WriteString(fmt.Sprintf("RUN %s\n\n", g.ChannelManagerSpec.BuildCmd))
+		_, _ = fmt.Fprintf(&b, "RUN %s\n\n", g.ChannelManagerSpec.BuildCmd)
 	}
 
 	// Runtime stage
-	b.WriteString(fmt.Sprintf("FROM %s\n", g.Runtime.BaseImage))
+	_, _ = fmt.Fprintf(&b, "FROM %s\n", g.Runtime.BaseImage)
 	b.WriteString("RUN apt-get update && apt-get install -y --no-install-recommends iproute2 iptables ca-certificates && rm -rf /var/lib/apt/lists/*\n")
-	b.WriteString(fmt.Sprintf("RUN useradd -m -s /bin/bash %s\n", g.Runtime.User))
+	_, _ = fmt.Fprintf(&b, "RUN useradd -m -s /bin/bash %s\n", g.Runtime.User)
 
 
 
 	// Runtime install commands (before channel-manager COPY for better layer caching —
 	// these change rarely, while channel-manager source changes on every build)
 	for _, cmd := range g.Runtime.Install {
-		b.WriteString(fmt.Sprintf("RUN %s\n", cmd))
+		_, _ = fmt.Fprintf(&b, "RUN %s\n", cmd)
 	}
 
 	// Feature install commands
@@ -268,7 +268,7 @@ func (g *Generator) writeAgentDockerfile() error {
 	// Copy channel-manager dist if enabled
 	if g.ChannelManager {
 		b.WriteString("# Install channel-manager\n")
-		b.WriteString(fmt.Sprintf("COPY --from=channel-manager-build %s/ /opt/channel-manager/dist/\n", g.ChannelManagerSpec.DistDir))
+		_, _ = fmt.Fprintf(&b, "COPY --from=channel-manager-build %s/ /opt/channel-manager/dist/\n", g.ChannelManagerSpec.DistDir)
 		b.WriteString("COPY --from=channel-manager-build /src/node_modules/ /opt/channel-manager/node_modules/\n")
 		b.WriteString("COPY --from=channel-manager-build /src/package.json /opt/channel-manager/package.json\n")
 		b.WriteString("COPY channel-manager-config.json /opt/channel-manager/config.json\n")
@@ -277,7 +277,7 @@ func (g *Generator) writeAgentDockerfile() error {
 	// Copy home override, hooks, entrypoint
 	g.writeCopyStatements(&b)
 
-	b.WriteString(fmt.Sprintf("WORKDIR /home/%s\n", g.Runtime.User))
+	_, _ = fmt.Fprintf(&b, "WORKDIR /home/%s\n", g.Runtime.User)
 	b.WriteString("ENTRYPOINT [\"/opt/entrypoint.sh\"]\n")
 
 	path := filepath.Join(g.OutDir, "Dockerfile.agent")
@@ -286,14 +286,14 @@ func (g *Generator) writeAgentDockerfile() error {
 
 // writeSingleStageDockerfile produces a simple Dockerfile without gateway.
 func (g *Generator) writeSingleStageDockerfile(b *strings.Builder) {
-	b.WriteString(fmt.Sprintf("FROM %s\n\n", g.Runtime.BaseImage))
+	_, _ = fmt.Fprintf(b, "FROM %s\n\n", g.Runtime.BaseImage)
 
 	// Create agent user
-	b.WriteString(fmt.Sprintf("RUN useradd -m -s /bin/bash %s\n\n", g.Runtime.User))
+	_, _ = fmt.Fprintf(b, "RUN useradd -m -s /bin/bash %s\n\n", g.Runtime.User)
 
 	// Runtime install commands
 	for _, cmd := range g.Runtime.Install {
-		b.WriteString(fmt.Sprintf("RUN %s\n", cmd))
+		_, _ = fmt.Fprintf(b, "RUN %s\n", cmd)
 	}
 	if len(g.Runtime.Install) > 0 {
 		b.WriteString("\n")
@@ -306,8 +306,8 @@ func (g *Generator) writeSingleStageDockerfile(b *strings.Builder) {
 	g.writeCopyStatements(b)
 
 	// Switch to agent user
-	b.WriteString(fmt.Sprintf("USER %s\n", g.Runtime.User))
-	b.WriteString(fmt.Sprintf("WORKDIR /home/%s\n\n", g.Runtime.User))
+	_, _ = fmt.Fprintf(b, "USER %s\n", g.Runtime.User)
+	_, _ = fmt.Fprintf(b, "WORKDIR /home/%s\n\n", g.Runtime.User)
 
 	// Entrypoint or CMD
 	if g.needsEntrypoint() {
@@ -318,7 +318,7 @@ func (g *Generator) writeSingleStageDockerfile(b *strings.Builder) {
 			for i, c := range g.Runtime.Cmd {
 				quoted[i] = fmt.Sprintf("%q", c)
 			}
-			b.WriteString(fmt.Sprintf("CMD [%s]\n", strings.Join(quoted, ", ")))
+			_, _ = fmt.Fprintf(b, "CMD [%s]\n", strings.Join(quoted, ", "))
 		}
 	}
 }
@@ -327,7 +327,7 @@ func (g *Generator) writeSingleStageDockerfile(b *strings.Builder) {
 func (g *Generator) writeFeatureCommands(b *strings.Builder) {
 	for _, f := range g.Features {
 		for _, cmd := range f.Commands {
-			b.WriteString(fmt.Sprintf("RUN %s\n", cmd))
+			_, _ = fmt.Fprintf(b, "RUN %s\n", cmd)
 		}
 	}
 	if g.hasFeatureCommands() {
@@ -369,7 +369,7 @@ func (g *Generator) writeGatewayCompose() error {
 	b.WriteString("services:\n")
 
 	// Gateway service: internet access + secrets
-	b.WriteString(fmt.Sprintf("  %s-gateway:\n", g.Config.Name))
+	_, _ = fmt.Fprintf(&b, "  %s-gateway:\n", g.Config.Name)
 	b.WriteString("    build:\n")
 	b.WriteString("      context: .\n")
 	b.WriteString("      dockerfile: Dockerfile.gateway\n")
@@ -383,16 +383,16 @@ func (g *Generator) writeGatewayCompose() error {
 
 	envVars := g.mergedEnvVars()
 	b.WriteString("    environment:\n")
-	b.WriteString(fmt.Sprintf("      - LOG_LEVEL=%s\n", g.logLevel()))
+	_, _ = fmt.Fprintf(&b, "      - LOG_LEVEL=%s\n", g.logLevel())
 	for _, v := range envVars {
-		b.WriteString(fmt.Sprintf("      - %s=${%s}\n", v, v))
+		_, _ = fmt.Fprintf(&b, "      - %s=${%s}\n", v, v)
 	}
 
 	// Expose runtime ports on gateway (forwarded to agent)
 	if len(g.Runtime.Ports) > 0 {
 		b.WriteString("    ports:\n")
 		for _, p := range g.Runtime.Ports {
-			b.WriteString(fmt.Sprintf("      - %q\n", p))
+			_, _ = fmt.Fprintf(&b, "      - %q\n", p)
 		}
 	}
 
@@ -411,7 +411,7 @@ func (g *Generator) writeGatewayCompose() error {
 	}
 
 	// Agent service: internal network only, no secrets
-	b.WriteString(fmt.Sprintf("  %s:\n", g.Config.Name))
+	_, _ = fmt.Fprintf(&b, "  %s:\n", g.Config.Name)
 	b.WriteString("    build:\n")
 	b.WriteString("      context: .\n")
 	b.WriteString("      dockerfile: Dockerfile.agent\n")
@@ -422,17 +422,17 @@ func (g *Generator) writeGatewayCompose() error {
 	b.WriteString("    sysctls:\n")
 	b.WriteString("      - net.ipv4.conf.all.route_localnet=1\n")
 	b.WriteString("    environment:\n")
-	b.WriteString(fmt.Sprintf("      - LOG_LEVEL=%s\n", g.logLevel()))
-	b.WriteString(fmt.Sprintf("      - GATEWAY_HOST=%s-gateway\n", g.Config.Name))
+	_, _ = fmt.Fprintf(&b, "      - LOG_LEVEL=%s\n", g.logLevel())
+	_, _ = fmt.Fprintf(&b, "      - GATEWAY_HOST=%s-gateway\n", g.Config.Name)
 	for _, env := range g.collectAgentEnv() {
-		b.WriteString(fmt.Sprintf("      - %s\n", env))
+		_, _ = fmt.Fprintf(&b, "      - %s\n", env)
 	}
 
 	// depends_on: use healthcheck condition when MITM requires CA readiness
 	if g.hasMITMDomains() {
-		b.WriteString(fmt.Sprintf("    depends_on:\n      %s-gateway:\n        condition: service_healthy\n", g.Config.Name))
+		_, _ = fmt.Fprintf(&b, "    depends_on:\n      %s-gateway:\n        condition: service_healthy\n", g.Config.Name)
 	} else {
-		b.WriteString(fmt.Sprintf("    depends_on:\n      - %s-gateway\n", g.Config.Name))
+		_, _ = fmt.Fprintf(&b, "    depends_on:\n      - %s-gateway\n", g.Config.Name)
 	}
 
 	volumes := g.collectVolumes()
@@ -442,7 +442,7 @@ func (g *Generator) writeGatewayCompose() error {
 	if len(volumes) > 0 {
 		b.WriteString("    volumes:\n")
 		for _, v := range volumes {
-			b.WriteString(fmt.Sprintf("      - %s\n", v))
+			_, _ = fmt.Fprintf(&b, "      - %s\n", v)
 		}
 	}
 	b.WriteString("    restart: unless-stopped\n")
@@ -457,7 +457,7 @@ func (g *Generator) writeGatewayCompose() error {
 	if len(namedVolumes) > 0 {
 		b.WriteString("\nvolumes:\n")
 		for _, v := range namedVolumes {
-			b.WriteString(fmt.Sprintf("  %s:\n", v))
+			_, _ = fmt.Fprintf(&b, "  %s:\n", v)
 		}
 	}
 
@@ -470,7 +470,7 @@ func (g *Generator) writeSingleCompose() error {
 	var b strings.Builder
 
 	b.WriteString("services:\n")
-	b.WriteString(fmt.Sprintf("  %s:\n", g.Config.Name))
+	_, _ = fmt.Fprintf(&b, "  %s:\n", g.Config.Name)
 	b.WriteString("    build:\n")
 	b.WriteString("      context: .\n")
 	b.WriteString("      dockerfile: Dockerfile\n")
@@ -480,7 +480,7 @@ func (g *Generator) writeSingleCompose() error {
 	if len(g.Runtime.Ports) > 0 {
 		b.WriteString("    ports:\n")
 		for _, p := range g.Runtime.Ports {
-			b.WriteString(fmt.Sprintf("      - %q\n", p))
+			_, _ = fmt.Fprintf(&b, "      - %q\n", p)
 		}
 	}
 
@@ -489,16 +489,16 @@ func (g *Generator) writeSingleCompose() error {
 	if len(volumes) > 0 {
 		b.WriteString("    volumes:\n")
 		for _, v := range volumes {
-			b.WriteString(fmt.Sprintf("      - %s\n", v))
+			_, _ = fmt.Fprintf(&b, "      - %s\n", v)
 		}
 	}
 
 	// Environment variables
 	envVars := g.mergedEnvVars()
 	b.WriteString("    environment:\n")
-	b.WriteString(fmt.Sprintf("      - LOG_LEVEL=%s\n", g.logLevel()))
+	_, _ = fmt.Fprintf(&b, "      - LOG_LEVEL=%s\n", g.logLevel())
 	for _, v := range envVars {
-		b.WriteString(fmt.Sprintf("      - %s=${%s}\n", v, v))
+		_, _ = fmt.Fprintf(&b, "      - %s=${%s}\n", v, v)
 	}
 
 	// Named volumes at top level
@@ -506,7 +506,7 @@ func (g *Generator) writeSingleCompose() error {
 	if len(namedVolumes) > 0 {
 		b.WriteString("\nvolumes:\n")
 		for _, v := range namedVolumes {
-			b.WriteString(fmt.Sprintf("  %s:\n", v))
+			_, _ = fmt.Fprintf(&b, "  %s:\n", v)
 		}
 	}
 
@@ -525,7 +525,7 @@ func (g *Generator) writeEnvExample() error {
 	b.WriteString("# Environment variables for agent-sandbox\n")
 	b.WriteString("# Copy to .env and fill in values\n\n")
 	for _, v := range envVars {
-		b.WriteString(fmt.Sprintf("%s=\n", v))
+		_, _ = fmt.Fprintf(&b, "%s=\n", v)
 	}
 
 	path := filepath.Join(g.Dir, ".env.example")
@@ -555,7 +555,7 @@ func (g *Generator) writeGatewayEntrypoint() error {
 	b.WriteString("#!/bin/sh\n")
 	b.WriteString("set -e\n\n")
 	b.WriteString("# Redirect incoming port 443 to proxy (port 8443)\n")
-	b.WriteString(fmt.Sprintf("iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port %d\n\n", g.GatewaySpec.ListenPort))
+	_, _ = fmt.Fprintf(&b, "iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port %d\n\n", g.GatewaySpec.ListenPort)
 	b.WriteString("# Start gateway\n")
 	b.WriteString("exec /usr/local/bin/gateway\n")
 	path := filepath.Join(g.OutDir, "gateway-entrypoint.sh")
@@ -588,7 +588,7 @@ func (g *Generator) writeAgentEntrypoint() error {
 			b.WriteString("echo \"entrypoint: setting up port forwards...\"\n")
 			for _, p := range g.Runtime.Ports {
 				_, containerPort := parsePortMapping(p)
-				b.WriteString(fmt.Sprintf("iptables -t nat -A PREROUTING -p tcp --dport %s -j DNAT --to-destination 127.0.0.1:%s\n", containerPort, containerPort))
+				_, _ = fmt.Fprintf(&b, "iptables -t nat -A PREROUTING -p tcp --dport %s -j DNAT --to-destination 127.0.0.1:%s\n", containerPort, containerPort)
 			}
 			b.WriteString("\n")
 		}
@@ -616,8 +616,8 @@ func (g *Generator) writeAgentEntrypoint() error {
 	// Home override: copy files from staging to home
 	if g.hasHomeOverride() {
 		b.WriteString("echo \"entrypoint: applying home override...\"\n")
-		b.WriteString(fmt.Sprintf("if [ -d /opt/home-override ]; then\n  cp -rT /opt/home-override /home/%s\n  chown -R %s:%s /home/%s\nfi\n\n",
-			g.Runtime.User, g.Runtime.User, g.Runtime.User, g.Runtime.User))
+		_, _ = fmt.Fprintf(&b, "if [ -d /opt/home-override ]; then\n  cp -rT /opt/home-override /home/%s\n  chown -R %s:%s /home/%s\nfi\n\n",
+			g.Runtime.User, g.Runtime.User, g.Runtime.User, g.Runtime.User)
 	}
 
 	// Run entrypoint hooks
@@ -626,7 +626,7 @@ func (g *Generator) writeAgentEntrypoint() error {
 		for _, f := range g.Features {
 			for _, hook := range f.EntrypointHooks {
 				hookName := filepath.Base(hook)
-				b.WriteString(fmt.Sprintf("su -c '/opt/hooks/%s' %s\n", hookName, g.Runtime.User))
+				_, _ = fmt.Fprintf(&b, "su -c '/opt/hooks/%s' %s\n", hookName, g.Runtime.User)
 			}
 		}
 		b.WriteString("\n")
@@ -635,10 +635,10 @@ func (g *Generator) writeAgentEntrypoint() error {
 	// Execute the runtime CMD as agent user
 	if g.ChannelManager {
 		b.WriteString("echo \"entrypoint: starting channel-manager...\"\n")
-		b.WriteString(fmt.Sprintf("exec su -c '%s' %s\n", g.ChannelManagerSpec.EntryPoint, g.Runtime.User))
+		_, _ = fmt.Fprintf(&b, "exec su -c '%s' %s\n", g.ChannelManagerSpec.EntryPoint, g.Runtime.User)
 	} else {
 		b.WriteString("echo \"entrypoint: starting agent...\"\n")
-		b.WriteString(fmt.Sprintf("exec su -c '%s' %s\n", strings.Join(g.Runtime.Cmd, " "), g.Runtime.User))
+		_, _ = fmt.Fprintf(&b, "exec su -c '%s' %s\n", strings.Join(g.Runtime.Cmd, " "), g.Runtime.User)
 	}
 
 	path := filepath.Join(g.OutDir, "entrypoint.sh")
@@ -649,15 +649,15 @@ func (g *Generator) writeAgentEntrypoint() error {
 func (g *Generator) writeGatewayConfig() error {
 	var b strings.Builder
 	b.WriteString("# Gateway configuration (auto-generated)\n")
-	b.WriteString(fmt.Sprintf("listen: \":%d\"\n", g.GatewaySpec.ListenPort))
-	b.WriteString(fmt.Sprintf("dns_listen: \":%d\"\n", g.GatewaySpec.DNSPort))
+	_, _ = fmt.Fprintf(&b, "listen: \":%d\"\n", g.GatewaySpec.ListenPort)
+	_, _ = fmt.Fprintf(&b, "dns_listen: \":%d\"\n", g.GatewaySpec.DNSPort)
 
 	// MITM configuration
 	mitmDomains := g.collectMITMDomains()
 	if len(mitmDomains) > 0 {
 		b.WriteString("mitm_domains:\n")
 		for _, d := range mitmDomains {
-			b.WriteString(fmt.Sprintf("  - %s\n", d))
+			_, _ = fmt.Fprintf(&b, "  - %s\n", d)
 		}
 	}
 
@@ -666,24 +666,24 @@ func (g *Generator) writeGatewayConfig() error {
 	if len(rewriters) > 0 {
 		b.WriteString("rewriters:\n")
 		for _, rw := range rewriters {
-			b.WriteString(fmt.Sprintf("  - type: %s\n", rw.Type))
+			_, _ = fmt.Fprintf(&b, "  - type: %s\n", rw.Type)
 			if len(rw.Domains) > 0 {
 				b.WriteString("    domains:\n")
 				for _, d := range rw.Domains {
-					b.WriteString(fmt.Sprintf("      - %s\n", d))
+					_, _ = fmt.Fprintf(&b, "      - %s\n", d)
 				}
 			}
 			if rw.EnvVar != "" {
-				b.WriteString(fmt.Sprintf("    env_var: %s\n", rw.EnvVar))
+				_, _ = fmt.Fprintf(&b, "    env_var: %s\n", rw.EnvVar)
 			}
 			if rw.Header != "" {
-				b.WriteString(fmt.Sprintf("    header: \"%s\"\n", rw.Header))
+				_, _ = fmt.Fprintf(&b, "    header: \"%s\"\n", rw.Header)
 			}
 			if rw.ValueFormat != "" {
-				b.WriteString(fmt.Sprintf("    value_format: \"%s\"\n", rw.ValueFormat))
+				_, _ = fmt.Fprintf(&b, "    value_format: \"%s\"\n", rw.ValueFormat)
 			}
 			if rw.TokenFile != "" {
-				b.WriteString(fmt.Sprintf("    token_file: \"%s\"\n", rw.TokenFile))
+				_, _ = fmt.Fprintf(&b, "    token_file: \"%s\"\n", rw.TokenFile)
 			}
 		}
 	}
@@ -693,8 +693,8 @@ func (g *Generator) writeGatewayConfig() error {
 		b.WriteString("port_forwards:\n")
 		for _, p := range g.Runtime.Ports {
 			hostPort, containerPort := parsePortMapping(p)
-			b.WriteString(fmt.Sprintf("  - listen: \":%s\"\n", hostPort))
-			b.WriteString(fmt.Sprintf("    target: \"%s:%s\"\n", g.Config.Name, containerPort))
+			_, _ = fmt.Fprintf(&b, "  - listen: \":%s\"\n", hostPort)
+			_, _ = fmt.Fprintf(&b, "    target: \"%s:%s\"\n", g.Config.Name, containerPort)
 		}
 	}
 
@@ -1078,13 +1078,13 @@ func (g *Generator) writeChannelRegistry(channelDir string, channels []string) e
 
 	for _, name := range channels {
 		camelName := "create" + strings.ToUpper(name[:1]) + name[1:] + "Channel"
-		b.WriteString(fmt.Sprintf("import %s from \"./%s.js\";\n", camelName, name))
+		_, _ = fmt.Fprintf(&b, "import %s from \"./%s.js\";\n", camelName, name)
 	}
 
 	b.WriteString("\nexport const channels: Record<string, ChannelFactory> = {\n")
 	for _, name := range channels {
 		camelName := "create" + strings.ToUpper(name[:1]) + name[1:] + "Channel"
-		b.WriteString(fmt.Sprintf("  %s: %s,\n", name, camelName))
+		_, _ = fmt.Fprintf(&b, "  %s: %s,\n", name, camelName)
 	}
 	b.WriteString("};\n")
 
@@ -1182,13 +1182,13 @@ func (g *Generator) writeCommandRegistry(commandDir string, plugins []string) er
 	for _, name := range plugins {
 		// Convention: command plugin exports a default createPlugin function
 		varName := strings.ReplaceAll(name, "-", "") + "Plugin"
-		b.WriteString(fmt.Sprintf("import %s from \"./%s/%s.js\";\n", varName, name, name))
+		_, _ = fmt.Fprintf(&b, "import %s from \"./%s/%s.js\";\n", varName, name, name)
 	}
 
 	b.WriteString("\nexport const commandPlugins: CommandPlugin[] = [\n")
 	for _, name := range plugins {
 		varName := strings.ReplaceAll(name, "-", "") + "Plugin"
-		b.WriteString(fmt.Sprintf("  %s,\n", varName))
+		_, _ = fmt.Fprintf(&b, "  %s,\n", varName)
 	}
 	b.WriteString("];\n")
 
