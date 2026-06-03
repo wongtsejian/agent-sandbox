@@ -42,7 +42,7 @@ func buildAgentSchema() map[string]any {
 			"runtime": map[string]any{
 				"type":        "string",
 				"description": "Runtime plugin name",
-				"enum":        []any{"codex"},
+				"enum":        []any{"codex", "claude-code", "pi"},
 			},
 			"gateway": map[string]any{
 				"type":        "boolean",

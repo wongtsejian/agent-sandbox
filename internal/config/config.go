@@ -54,7 +54,7 @@ func (f *FeatureEntry) UnmarshalYAML(value *yaml.Node) error {
 // AgentConfig represents an agent.yaml file.
 type AgentConfig struct {
 	Name     string         `yaml:"name" schema:"Agent name" required:"true" examples:"my-agent"`
-	Runtime  string         `yaml:"runtime" schema:"Runtime plugin name" required:"true" enum:"codex"`
+	Runtime  string         `yaml:"runtime" schema:"Runtime plugin name" required:"true" enum:"codex,claude-code,pi"`
 	LogLevel string         `yaml:"log_level" schema:"Log verbosity level" default:"info" enum:"info,debug"`
 	Gateway  *bool          `yaml:"gateway" schema:"Enable transparent gateway proxy" default:"true"`
 	Features []FeatureEntry `yaml:"features" schema:"Feature plugins and their configuration"`
