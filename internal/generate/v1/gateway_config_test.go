@@ -10,7 +10,7 @@ import (
 )
 
 func TestBuildGatewayConfig(t *testing.T) {
-	cfg := &config.V1Config{
+	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
 			Services: []config.GatewayServiceEntry{
 				{
@@ -40,7 +40,7 @@ func TestBuildGatewayConfig(t *testing.T) {
 }
 
 func TestBuildGatewayConfig_WithMiddleware(t *testing.T) {
-	cfg := &config.V1Config{
+	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
 			Services: []config.GatewayServiceEntry{
 				{
@@ -60,7 +60,7 @@ func TestBuildGatewayConfig_WithMiddleware(t *testing.T) {
 }
 
 func TestBuildGatewayConfig_NilContribs(t *testing.T) {
-	cfg := &config.V1Config{
+	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
 			Services: []config.GatewayServiceEntry{
 				{URL: "https://example.com"},

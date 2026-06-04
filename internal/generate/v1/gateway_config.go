@@ -42,7 +42,7 @@ type gatewayRewriterConfig struct {
 }
 
 // BuildGatewayConfig merges user gateway config with plugin contributions.
-func BuildGatewayConfig(cfg *config.V1Config, contribs *plugin.Contributions) *GatewayConfigOutput {
+func BuildGatewayConfig(cfg *config.Config, contribs *plugin.Contributions) *GatewayConfigOutput {
 	out := &GatewayConfigOutput{}
 
 	// User-declared services

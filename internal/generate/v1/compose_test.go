@@ -10,7 +10,7 @@ import (
 )
 
 func TestBuildCompose(t *testing.T) {
-	cfg := &config.V1Config{
+	cfg := &config.Config{
 		Name: "test-agent",
 		Runtime: config.RuntimeConfig{
 			Volumes: []string{"data:/opt/data"},
@@ -45,7 +45,7 @@ func TestBuildCompose(t *testing.T) {
 }
 
 func TestBuildCompose_NoSidecars(t *testing.T) {
-	cfg := &config.V1Config{
+	cfg := &config.Config{
 		Name: "simple-agent",
 		Runtime: config.RuntimeConfig{
 			Image: "@builtin/codex",
@@ -61,7 +61,7 @@ func TestBuildCompose_NoSidecars(t *testing.T) {
 }
 
 func TestBuildCompose_PluginPorts(t *testing.T) {
-	cfg := &config.V1Config{
+	cfg := &config.Config{
 		Name: "ssh-agent",
 		Runtime: config.RuntimeConfig{
 			Image: "@builtin/codex",

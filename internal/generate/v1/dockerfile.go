@@ -104,7 +104,7 @@ func EntrypointScript(preEntrypoint []string) string {
 // BuildDockerfile generates a Dockerfile string from config and plugin contributions.
 // The Dockerfile uses entrypoint.sh (expected alongside it in the build context) as
 // ENTRYPOINT, which sets up iptables routing before handing off to CMD.
-func BuildDockerfile(cfg *config.V1Config, contribs *plugin.Contributions) (string, error) {
+func BuildDockerfile(cfg *config.Config, contribs *plugin.Contributions) (string, error) {
 	var lines []string
 
 	// Base image

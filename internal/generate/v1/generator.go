@@ -41,7 +41,7 @@ func (g *Generator) SetGatewayFS(gwFS fs.FS) {
 // Run executes the full generation pipeline.
 func (g *Generator) Run() error {
 	// 1. Load config
-	cfg, err := config.LoadV1(g.projectDir)
+	cfg, err := config.Load(g.projectDir)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -134,7 +134,7 @@ func (g *Generator) Run() error {
 }
 
 // collectAllOptions merges all installation options into a single map.
-func collectAllOptions(cfg *config.V1Config) map[string]any {
+func collectAllOptions(cfg *config.Config) map[string]any {
 	opts := make(map[string]any)
 	for _, inst := range cfg.Installations {
 		for k, v := range inst.Options {

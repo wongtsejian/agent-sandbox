@@ -22,7 +22,7 @@ func generateV1Cmd(dir *string) *cobra.Command {
 				return fmt.Errorf("resolve dir: %w", err)
 			}
 
-			cfg, err := config.LoadV1(projectDir)
+			cfg, err := config.Load(projectDir)
 			if err != nil {
 				return err
 			}

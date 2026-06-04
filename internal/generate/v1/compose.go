@@ -17,7 +17,7 @@ type composeFile struct {
 
 // BuildCompose generates a docker-compose.yml string from config and plugin contributions.
 // projectDir is used to compute relative paths for sidecar build contexts.
-func BuildCompose(cfg *config.V1Config, contribs *plugin.Contributions, projectDir string) (string, error) {
+func BuildCompose(cfg *config.Config, contribs *plugin.Contributions, projectDir string) (string, error) {
 	compose := composeFile{
 		Services: map[string]any{},
 		Volumes:  map[string]any{},
@@ -154,7 +154,7 @@ func extractVolumeName(volume string) string {
 // and returns them as docker-compose environment entries (passthrough format).
 // Note: middleware env vars are NOT included here — middleware code gets secrets
 // baked in at generate-time via template rendering.
-func collectGatewayEnvVars(cfg *config.V1Config, contribs *plugin.Contributions) []string {
+func collectGatewayEnvVars(cfg *config.Config, contribs *plugin.Contributions) []string {
 	seen := map[string]bool{}
 
 	// From user gateway config

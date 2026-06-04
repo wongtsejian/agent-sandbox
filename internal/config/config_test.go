@@ -9,26 +9,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoadV1_MissingName(t *testing.T) {
+func TestLoad_MissingName(t *testing.T) {
 	dir := t.TempDir()
 	yaml := `runtime:
   image: "@builtin/codex"
 `
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte(yaml), 0644))
-	_, err := LoadV1(dir)
+	_, err := Load(dir)
 	assert.ErrorContains(t, err, "name is required")
 }
 
-func TestLoadV1_MissingRuntimeImage(t *testing.T) {
+func TestLoad_MissingRuntimeImage(t *testing.T) {
 	dir := t.TempDir()
 	yaml := `name: test
 `
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte(yaml), 0644))
-	_, err := LoadV1(dir)
+	_, err := Load(dir)
 	assert.ErrorContains(t, err, "runtime.image is required")
 }
 
-func TestLoadV1_DockerURLRequiresNetwork(t *testing.T) {
+func TestLoad_DockerURLRequiresNetwork(t *testing.T) {
 	dir := t.TempDir()
 	yaml := `
 name: test
@@ -39,11 +39,11 @@ gateway:
     - url: "docker://sidecar:8080"
 `
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte(yaml), 0644))
-	_, err := LoadV1(dir)
+	_, err := Load(dir)
 	assert.ErrorContains(t, err, "network is required for docker:// URLs")
 }
 
-func TestLoadV1_BasicConfig(t *testing.T) {
+func TestLoad_BasicConfig(t *testing.T) {
 	dir := t.TempDir()
 	yaml := `
 name: test-agent
@@ -68,7 +68,7 @@ installations:
 `
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte(yaml), 0644))
 
-	cfg, err := LoadV1(dir)
+	cfg, err := Load(dir)
 	require.NoError(t, err)
 
 	assert.Equal(t, "test-agent", cfg.Name)

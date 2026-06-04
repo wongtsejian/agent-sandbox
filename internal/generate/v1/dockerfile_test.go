@@ -10,7 +10,7 @@ import (
 )
 
 func TestBuildDockerfile(t *testing.T) {
-	cfg := &config.V1Config{
+	cfg := &config.Config{
 		Runtime: config.RuntimeConfig{
 			Image:       "node:24-slim",
 			ExtraBuilds: []string{"RUN apt-get update && apt-get install -y git"},
@@ -36,7 +36,7 @@ func TestBuildDockerfile(t *testing.T) {
 }
 
 func TestBuildDockerfile_BuiltinPreset(t *testing.T) {
-	cfg := &config.V1Config{
+	cfg := &config.Config{
 		Runtime: config.RuntimeConfig{
 			Image:      "@builtin/codex",
 			Entrypoint: []string{"sleep", "infinity"},
@@ -52,7 +52,7 @@ func TestBuildDockerfile_BuiltinPreset(t *testing.T) {
 }
 
 func TestBuildDockerfile_CustomImage(t *testing.T) {
-	cfg := &config.V1Config{
+	cfg := &config.Config{
 		Runtime: config.RuntimeConfig{
 			Image:      "python:3.12-slim",
 			Entrypoint: []string{"python", "main.py"},
