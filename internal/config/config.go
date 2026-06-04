@@ -51,48 +51,6 @@ func (f *FeatureEntry) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// AgentConfig represents an agent.yaml file.
-type AgentConfig struct {
-	Name     string         `yaml:"name" schema:"Agent name" required:"true" examples:"my-agent"`
-	Runtime  string         `yaml:"runtime" schema:"Runtime plugin name" required:"true" enum:"codex,claude-code,pi"`
-	LogLevel string         `yaml:"log_level" schema:"Log verbosity level" default:"info" enum:"info,debug"`
-	Gateway  *bool          `yaml:"gateway" schema:"Enable transparent gateway proxy" default:"true"`
-	Workdir  string         `yaml:"workdir" schema:"Working directory for the agent. Supports {{ .AGENT_HOME }} template variable." examples:"{{ .AGENT_HOME }}/workspace"`
-	Features []FeatureEntry `yaml:"features" schema:"Feature plugins and their configuration"`
-}
-
-// GatewayEnabled returns whether the gateway should be included.
-// Defaults to true if not specified.
-func (c *AgentConfig) GatewayEnabled() bool {
-	if c.Gateway == nil {
-		return true
-	}
-	return *c.Gateway
-}
-
-// Load reads and parses an agent.yaml file from the given directory.
-func Load(dir string) (*AgentConfig, error) {
-	path := filepath.Join(dir, "agent.yaml")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("reading agent.yaml: %w", err)
-	}
-
-	var cfg AgentConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing agent.yaml: %w", err)
-	}
-
-	if cfg.Name == "" {
-		return nil, fmt.Errorf("agent.yaml: name is required")
-	}
-	if cfg.Runtime == "" {
-		return nil, fmt.Errorf("agent.yaml: runtime is required")
-	}
-
-	return &cfg, nil
-}
-
 // FleetConfig represents a fleet.yaml file for multi-agent deployments.
 type FleetConfig struct {
 	Agents []string    `yaml:"agents"`

@@ -45,7 +45,7 @@ The sandbox must be running (agent-sandbox compose up) before auditing.`,
 }
 
 func runAudit(dir string) error {
-	cfg, err := config.Load(dir)
+	cfg, err := config.LoadV1(dir)
 	if err != nil {
 		// Try fleet mode
 		fleet, ferr := config.LoadFleet(dir)
@@ -55,7 +55,7 @@ func runAudit(dir string) error {
 		// Audit each agent in fleet
 		var allChecks []auditCheck
 		for _, agentDir := range fleet.Agents {
-			agentCfg, err := config.Load(filepath.Join(dir, agentDir))
+			agentCfg, err := config.LoadV1(filepath.Join(dir, agentDir))
 			if err != nil {
 				return fmt.Errorf("loading agent %s: %w", agentDir, err)
 			}
@@ -69,7 +69,7 @@ func runAudit(dir string) error {
 	return printResults(checks)
 }
 
-func auditAgent(cfg *config.AgentConfig) []auditCheck {
+func auditAgent(cfg *config.V1Config) []auditCheck {
 	agentContainer := fmt.Sprintf("%s-%s-1", projectName, cfg.Name)
 	gatewayContainer := fmt.Sprintf("%s-%s-gateway-1", projectName, cfg.Name)
 
@@ -151,7 +151,7 @@ func checkHTTPS(container string) auditCheck {
 }
 
 // checkSecretIsolation verifies the agent env doesn't contain gateway credentials.
-func checkSecretIsolation(container string, cfg *config.AgentConfig) auditCheck {
+func checkSecretIsolation(container string, cfg *config.V1Config) auditCheck {
 	env, err := dockerExec(container, "env")
 	if err != nil {
 		return auditCheck{
