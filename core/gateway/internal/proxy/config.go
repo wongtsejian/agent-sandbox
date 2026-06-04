@@ -10,7 +10,7 @@ import (
 
 // RewriterConfig describes a rewriter to instantiate for a set of domains.
 type RewriterConfig struct {
-	Type        string   `yaml:"type"`                  // "telegram-url", "auth-header", or "oauth"
+	Type        string   `yaml:"type"`                  // "auth-header" or "oauth"
 	Domains     []string `yaml:"domains"`               // domains this rewriter applies to
 	EnvVar      string   `yaml:"env_var"`               // environment variable holding the secret
 	Header      string   `yaml:"header,omitempty"`      // header name to inject (auth-header only)
