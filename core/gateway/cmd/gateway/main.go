@@ -153,14 +153,6 @@ func buildRewriters(cfgs []proxy.RewriterConfig) []mitm.Rewriter {
 	var rewriters []mitm.Rewriter
 	for _, rc := range cfgs {
 		switch rc.Type {
-		case "telegram-url":
-			rw, err := mitm.NewTelegramRewriter()
-			if err != nil {
-				slog.Error("telegram rewriter disabled", "error", err)
-				continue
-			}
-			rewriters = append(rewriters, rw)
-			slog.Info("telegram token rewriter enabled")
 		case "auth-header":
 			rw, err := mitm.NewAuthHeaderRewriter(rc.Domains, rc.Header, rc.ValueFormat, rc.EnvVar)
 			if err != nil {
@@ -190,10 +182,6 @@ func collectSecrets(cfgs []proxy.RewriterConfig) []string {
 	var secrets []string
 	for _, rc := range cfgs {
 		switch rc.Type {
-		case "telegram-url":
-			if v := os.Getenv("TELEGRAM_BOT_TOKEN"); v != "" {
-				secrets = append(secrets, v)
-			}
 		case "auth-header":
 			if rc.EnvVar != "" {
 				if v := os.Getenv(rc.EnvVar); v != "" {
