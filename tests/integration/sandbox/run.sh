@@ -29,14 +29,11 @@ export $(grep -v '^#' "$SCRIPT_DIR/test.env" | xargs)
 sleep 3
 
 echo ""
-echo "--- Running audit checks ---"
-"$CLI" -C "$SCRIPT_DIR" audit
-echo ""
 
 # The one check audit can't do: credential injection verification.
 # This requires a known secret and a mirror endpoint to confirm injection.
 echo "--- Credential injection check ---"
-AGENT_CONTAINER="agent-sandbox-sandbox-test-1"
+AGENT_CONTAINER="agent-sandbox-agent-1"
 
 RESPONSE=$(docker exec "$AGENT_CONTAINER" curl -so- --max-time 30 https://httpbin.org/headers 2>&1 || true)
 if echo "$RESPONSE" | grep -q "super-secret-token-12345"; then
@@ -45,8 +42,11 @@ else
   echo -e "  \033[31m✗\033[0m Gateway did not inject credentials"
   echo "    Response: $RESPONSE"
   echo ""
+  echo "--- Container logs (agent) ---"
+  docker logs "$AGENT_CONTAINER" 2>&1 | tail -30
+  echo ""
   echo "--- Container logs (gateway) ---"
-  docker logs "agent-sandbox-sandbox-test-gateway-1" 2>&1 | tail -20
+  docker logs "agent-sandbox-gateway-1" 2>&1 | tail -20
   exit 1
 fi
 

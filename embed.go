@@ -3,21 +3,14 @@ package sandbox
 
 import "embed"
 
-// GatewaySource contains the gateway proxy source code, embedded for
-// writing to .build/gateway-src/ during generation. The Docker build
+// GatewaySource contains the gateway proxy source code, SDK, and module files,
+// embedded for writing to .build/gateway-src/ during generation. The Docker build
 // compiles this into the gateway binary that runs inside the container.
 //
-//go:embed gateway
+//go:embed core/gateway core/sdk go.mod go.sum
 var GatewaySource embed.FS
 
-// ChannelManagerSource contains the channel manager TypeScript source code, embedded for
-// writing to .build/channel-manager-src/ during generation. The Docker build
-// compiles this into the channel manager that runs inside the container.
+// CorePlugins contains the built-in plugin definitions (declarative YAML plugins).
 //
-//go:embed channel-manager
-var ChannelManagerSource embed.FS
-
-// CorePlugins contains the built-in plugin definitions (runtime + core features).
-//
-//go:embed internal/plugins
+//go:embed core/plugins
 var CorePlugins embed.FS
