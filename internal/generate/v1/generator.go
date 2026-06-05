@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/donbader/agent-sandbox/internal/config"
 	"github.com/donbader/agent-sandbox/internal/plugin"
@@ -16,6 +17,11 @@ type Generator struct {
 	bundledFS  fs.FS
 	gatewayFS  fs.FS
 	coreDir    string
+}
+
+type resolvedPlugin struct {
+	def      *plugin.PluginDef
+	rendered *plugin.Contributions
 }
 
 // NewGenerator creates a v1 generator for the given project directory.
@@ -54,14 +60,26 @@ func (g *Generator) Run() error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	// 2. Resolve and render plugins
+	// 2. Create output directory (needed early for asset extraction)
+	buildDir := filepath.Join(g.projectDir, ".build")
+	if err := os.MkdirAll(buildDir, 0755); err != nil {
+		return fmt.Errorf("create .build dir: %w", err)
+	}
+
+	// 3. Resolve plugins, extract assets, then render
 	resolver := plugin.NewResolver(g.projectDir, g.bundledFS)
 	var allContribs []*plugin.Contributions
+	resolved := make(map[string]*resolvedPlugin)
 
 	for _, inst := range cfg.Installations {
 		pluginDef, err := resolver.Resolve(inst.Plugin, inst.Source)
 		if err != nil {
 			return fmt.Errorf("resolve plugin %q: %w", inst.Plugin, err)
+		}
+
+		// Resolve asset paths before rendering so {{ asset "X" }} works in templates
+		if err := g.resolveAssetPaths(pluginDef, buildDir); err != nil {
+			return fmt.Errorf("resolve assets for plugin %q: %w", inst.Plugin, err)
 		}
 
 		rendered, err := plugin.RenderContributions(pluginDef, inst.Options)
@@ -87,16 +105,16 @@ func (g *Generator) Run() error {
 			}
 		}
 
+		resolved[inst.Plugin] = &resolvedPlugin{def: pluginDef, rendered: rendered}
 		allContribs = append(allContribs, rendered)
 	}
 
-	merged := plugin.MergeContributions(allContribs...)
-
-	// 3. Create output directory
-	buildDir := filepath.Join(g.projectDir, ".build")
-	if err := os.MkdirAll(buildDir, 0755); err != nil {
-		return fmt.Errorf("create .build dir: %w", err)
+	// 4. Validate plugin dependencies
+	if err := validateRequires(resolved); err != nil {
+		return err
 	}
+
+	merged := plugin.MergeContributions(allContribs...)
 
 	// 4. Generate Dockerfile + entrypoint.sh (transparent proxy bootstrap)
 	dockerfile, err := BuildDockerfile(cfg, merged)
@@ -278,4 +296,76 @@ func extractFS(srcFS fs.FS, root, dest string) error {
 // copyDir recursively copies a directory from src to dst.
 func copyDir(src, dst string) error {
 	return extractFS(os.DirFS(src), ".", dst)
+}
+
+// validateRequires checks that all plugin dependencies are satisfied.
+func validateRequires(resolved map[string]*resolvedPlugin) error {
+	// Build set of installed plugin names (by their PluginDef.Name)
+	installed := make(map[string]bool)
+	for _, rp := range resolved {
+		installed[rp.def.Name] = true
+	}
+
+	for ref, rp := range resolved {
+		for _, req := range rp.def.Requires {
+			// Check by plugin def name (strip @builtin/ prefix for comparison)
+			reqName := req
+			if len(reqName) > 9 && reqName[:9] == "@builtin/" {
+				reqName = reqName[9:]
+			}
+			if !installed[reqName] {
+				return fmt.Errorf("plugin %q requires %q — add it to installations", ref, req)
+			}
+		}
+	}
+	return nil
+}
+
+// resolveAssetPaths extracts declared assets and populates pluginDef.AssetPaths.
+//
+// For bundled plugins: extracts from embedded FS to .build/plugins/<name>/<asset>/
+// For local plugins: resolves relative to plugin's BaseDir
+//
+// After this, {{ asset "X" }} in templates resolves to the correct Docker COPY path.
+func (g *Generator) resolveAssetPaths(p *plugin.PluginDef, buildDir string) error {
+	if len(p.Assets) == 0 {
+		return nil
+	}
+
+	p.AssetPaths = make(map[string]string, len(p.Assets))
+
+	for _, assetName := range p.Assets {
+		// Trim trailing slash
+		name := strings.TrimSuffix(assetName, "/")
+
+		if p.BaseDir != "" {
+			// Local plugin: asset is relative to plugin directory
+			p.AssetPaths[name] = filepath.Join(p.BaseDir, name)
+		} else {
+			// Bundled plugin: extract from embedded FS to .build/plugins/<plugin>/<asset>/
+			if g.bundledFS == nil {
+				return fmt.Errorf("plugin %q declares asset %q but no bundled FS available", p.Name, name)
+			}
+
+			srcPath := p.Name + "/" + name
+			dstPath := filepath.Join(buildDir, "plugins", p.Name, name)
+
+			subFS, err := fs.Sub(g.bundledFS, srcPath)
+			if err != nil {
+				return fmt.Errorf("asset %q not found in bundled plugin %q", name, p.Name)
+			}
+
+			if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+				return err
+			}
+			if err := extractFS(subFS, ".", dstPath); err != nil {
+				return fmt.Errorf("extract asset %q: %w", name, err)
+			}
+
+			// Path relative to Docker build context (project root)
+			p.AssetPaths[name] = ".build/plugins/" + p.Name + "/" + name
+		}
+	}
+
+	return nil
 }
