@@ -15,6 +15,7 @@ import (
 	"github.com/donbader/agent-sandbox/core/gateway/internal/mitm"
 	"github.com/donbader/agent-sandbox/core/gateway/internal/proxy"
 	"github.com/donbader/agent-sandbox/core/gateway/internal/redact"
+	"github.com/donbader/agent-sandbox/core/sdk/gateway"
 
 	// Custom middleware compilation target — user .go files are copied here at generate-time.
 	_ "github.com/donbader/agent-sandbox/core/gateway/middlewares/custom"
@@ -48,8 +49,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Collect secret values from rewriter env vars for value-based redaction.
-	secrets := collectSecrets(cfg.Rewriters)
+	// Build rewriters early so we can collect secrets from them (e.g. OAuth tokens)
+	// before constructing the redacting logger.
+	rewriters := buildRewriters(cfg.Rewriters)
+
+	// Collect secret values for value-based log redaction from two sources:
+	// 1. Rewriters that implement SecretProvider (auth-header env vars, OAuth tokens).
+	var secrets []string
+	for _, rw := range rewriters {
+		if sp, ok := rw.(mitm.SecretProvider); ok {
+			secrets = append(secrets, sp.Secrets()...)
+		}
+	}
+	// 2. Secrets declared by custom middleware via gateway.RegisterSecret().
+	secrets = append(secrets, gateway.Secrets()...)
 
 	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,
@@ -76,9 +89,6 @@ func main() {
 
 	// Start TCP proxy
 	p := proxy.New(cfg)
-
-	// Build rewriters from config (shared between MITM and HTTP handlers)
-	rewriters := buildRewriters(cfg.Rewriters)
 
 	// Generate CA and register MITM handler if MITM domains are configured
 	if len(cfg.MITMDomains) > 0 {
@@ -176,19 +186,3 @@ func buildRewriters(cfgs []proxy.RewriterConfig) []mitm.Rewriter {
 	return rewriters
 }
 
-// collectSecrets reads the raw secret values from environment variables referenced
-// by rewriter configs. These values are used for value-based log redaction.
-func collectSecrets(cfgs []proxy.RewriterConfig) []string {
-	var secrets []string
-	for _, rc := range cfgs {
-		switch rc.Type {
-		case "auth-header":
-			if rc.EnvVar != "" {
-				if v := os.Getenv(rc.EnvVar); v != "" {
-					secrets = append(secrets, v)
-				}
-			}
-		}
-	}
-	return secrets
-}
