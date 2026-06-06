@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=.build/fleet-schema.json
+# Multi-agent fleet example
+# Run: agent-sandbox generate -C examples/multi-agent
+agents:
+  - agent-001
+  - agent-002
+
+shared:
+  gateway:
+    services:
+      - url: https://agent-gateway.stx-ai.net
+        headers:
+          Authorization: Bearer ${STX_LLM_GATEWAY_API_KEY}
+  installations:
+    - plugin: "@builtin/github-pat"
+      token: "${GITHUB_PAT}"

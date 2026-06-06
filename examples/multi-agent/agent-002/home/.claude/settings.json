@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)"
+    ],
+    "deny": []
+  },
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://agent-gateway.stx-ai.net/kiro",
+    "ANTHROPIC_API_KEY": "dummy"
+  }
+}
