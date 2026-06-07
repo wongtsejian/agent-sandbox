@@ -143,6 +143,12 @@ jobs:
           ./agent-sandbox -C examples/${{ matrix.example }} compose logs
           exit 1
 
+      - name: Wait for agent entrypoint
+        run: sleep 5
+
+      - name: Audit security contract
+        run: ./agent-sandbox -C examples/${{ matrix.example }} audit
+
       - name: Teardown
         if: always()
         run: ./agent-sandbox -C examples/${{ matrix.example }} compose down -v
