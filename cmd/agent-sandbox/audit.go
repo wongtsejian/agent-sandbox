@@ -61,21 +61,21 @@ func runAudit(dir string) error {
 			if err != nil {
 				return fmt.Errorf("loading agent %s: %w", agentDir, err)
 			}
-			checks := auditAgent(agentCfg, projectName)
+			checks := auditAgent(agentCfg, projectName, dir)
+			printAgentResults(agentCfg.Name, checks)
 			allChecks = append(allChecks, checks...)
 		}
-		return printResults(allChecks)
+		return printSummary(allChecks)
 	}
 
-	checks := auditAgent(cfg, projectName)
-	return printResults(checks)
+	checks := auditAgent(cfg, projectName, dir)
+	printAgentResults(cfg.Name, checks)
+	return printSummary(checks)
 }
 
-func auditAgent(cfg *config.Config, projectName string) []auditCheck {
+func auditAgent(cfg *config.Config, projectName, dir string) []auditCheck {
 	agentContainer := fmt.Sprintf("%s-%s-1", projectName, cfg.Name)
 	gatewayContainer := fmt.Sprintf("%s-%s-gateway-1", projectName, cfg.Name)
-
-	fmt.Printf("Auditing %s...\n\n", cfg.Name)
 
 	var checks []auditCheck
 
@@ -98,7 +98,7 @@ func auditAgent(cfg *config.Config, projectName string) []auditCheck {
 	}
 
 	checks = append(checks, checkHTTPS(agentContainer))
-	checks = append(checks, checkSecretIsolation(agentContainer, cfg))
+	checks = append(checks, checkSecretIsolation(agentContainer, cfg, dir))
 	checks = append(checks, checkDNS(agentContainer))
 	checks = append(checks, checkCACert(agentContainer))
 	checks = append(checks, checkDNATRules(agentContainer))
@@ -162,9 +162,22 @@ func checkHTTPS(container string) auditCheck {
 	}
 }
 
-// checkSecretIsolation verifies the agent env doesn't contain gateway credentials.
-func checkSecretIsolation(container string, cfg *config.Config) auditCheck {
-	env, err := containerExec(container, "env")
+// checkSecretIsolation verifies the agent env doesn't contain real secrets from .env.
+func checkSecretIsolation(container string, cfg *config.Config, dir string) auditCheck {
+	// Load secrets from .env file
+	envPath := filepath.Join(dir, ".env")
+	secrets, err := loadEnvSecrets(envPath)
+	if err != nil || len(secrets) == 0 {
+		// No .env file or empty — check passes (nothing to leak)
+		return auditCheck{
+			Name:   "Secret isolation",
+			Passed: true,
+			Detail: "no .env file found (nothing to verify)",
+		}
+	}
+
+	// Get the agent container's environment
+	agentEnv, err := containerExec(container, "env")
 	if err != nil {
 		return auditCheck{
 			Name:   "Secret isolation",
@@ -173,22 +186,17 @@ func checkSecretIsolation(container string, cfg *config.Config) auditCheck {
 		}
 	}
 
-	// Check for common secret-bearing env var patterns
+	// Check if any .env secret values appear in the agent's environment
 	leakedVars := []string{}
-	for _, line := range strings.Split(env, "\n") {
-		upper := strings.ToUpper(line)
-		// Skip dummy values
-		if strings.Contains(upper, "=DUMMY") {
+	for name, value := range secrets {
+		if value == "" {
 			continue
 		}
-		// Flag real-looking secrets
-		if strings.Contains(upper, "API_KEY=") ||
-			strings.Contains(upper, "TOKEN=") ||
-			strings.Contains(upper, "SECRET=") ||
-			strings.Contains(upper, "PASSWORD=") {
+		// Check if the actual secret value appears in any env var inside the container
+		for _, line := range strings.Split(agentEnv, "\n") {
 			parts := strings.SplitN(line, "=", 2)
-			if len(parts) == 2 && parts[1] != "" && parts[1] != "dummy" {
-				leakedVars = append(leakedVars, parts[0])
+			if len(parts) == 2 && parts[1] == value {
+				leakedVars = append(leakedVars, fmt.Sprintf("%s (from .env %s)", parts[0], name))
 			}
 		}
 	}
@@ -197,14 +205,38 @@ func checkSecretIsolation(container string, cfg *config.Config) auditCheck {
 		return auditCheck{
 			Name:   "Secret isolation",
 			Passed: false,
-			Detail: fmt.Sprintf("agent env contains secrets: %s", strings.Join(leakedVars, ", ")),
+			Detail: fmt.Sprintf("agent env contains real secrets: %s", strings.Join(leakedVars, ", ")),
 		}
 	}
 	return auditCheck{
 		Name:   "Secret isolation",
 		Passed: true,
-		Detail: "no credentials leaked to agent environment",
+		Detail: "no .env secrets leaked to agent environment",
 	}
+}
+
+// loadEnvSecrets reads a .env file and returns key=value pairs.
+func loadEnvSecrets(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	secrets := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			val := strings.TrimSpace(parts[1])
+			// Strip surrounding quotes
+			val = strings.Trim(val, `"'`)
+			secrets[key] = val
+		}
+	}
+	return secrets, nil
 }
 
 // checkDNS verifies DNS resolves MITM domains to the gateway.
@@ -309,21 +341,28 @@ func checkDefaultRoute(container string) auditCheck {
 	}
 }
 
-func printResults(checks []auditCheck) error {
-	passed := 0
-	failed := 0
+func printAgentResults(name string, checks []auditCheck) {
+	fmt.Printf("Auditing %s...\n\n", name)
 	for _, c := range checks {
 		if c.Passed {
 			fmt.Printf("  \033[32m✓\033[0m %s\n", c.Name)
-			passed++
 		} else {
 			fmt.Printf("  \033[31m✗\033[0m %s\n", c.Name)
 			fmt.Printf("    %s\n", c.Detail)
-			failed++
 		}
 	}
-	fmt.Printf("\n%d/%d checks passed\n", passed, passed+failed)
-	if failed > 0 {
+	fmt.Println()
+}
+
+func printSummary(checks []auditCheck) error {
+	passed := 0
+	for _, c := range checks {
+		if c.Passed {
+			passed++
+		}
+	}
+	fmt.Printf("%d/%d checks passed\n", passed, len(checks))
+	if passed < len(checks) {
 		os.Exit(1)
 	}
 	return nil
