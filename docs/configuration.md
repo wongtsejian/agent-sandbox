@@ -1,120 +1,151 @@
 # Configuration
 
-## Editor Autocompletion
-
-Running `agent-sandbox generate` produces `.build/schema.json` — a JSON Schema for `agent.yaml`. Add this comment at the top of your config to get autocompletion and validation in VS Code (requires the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml)):
+## Minimal Example
 
 ```yaml
 # yaml-language-server: $schema=.build/schema.json
 name: coder
-runtime: codex
+core_version: latest
+
+runtime:
+  image: "@builtin/codex"
+
+gateway:
+  services:
+    - url: https://api.openai.com
+      headers:
+        Authorization: Bearer ${OPENAI_API_KEY}
 ```
 
-The schema is generated from plugin struct tags, so it always reflects your active plugins — including available fields, types, defaults, and validation patterns (e.g., `@` prefix on usernames).
+This is a complete, working config. The agent uses the codex preset, and the gateway injects your API key into all requests to `api.openai.com`.
 
-> Note: You need to run `agent-sandbox generate` at least once before the schema file exists.
+## Editor Autocompletion
 
-## Working Directory
-
-The `workdir` top-level field sets the agent's working directory inside the container.
+Running `agent-sandbox generate` produces `.build/schema.json`. Add this comment at the top of your config for VS Code autocompletion (requires the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml)):
 
 ```yaml
-name: coder
-runtime: codex
-workdir: "{{ .AGENT_HOME }}/workspace"
+# yaml-language-server: $schema=.build/schema.json
 ```
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `workdir` | `{{ .AGENT_HOME }}` | The working directory for the agent process |
+You need to run `agent-sandbox generate` at least once before the schema file exists.
 
-### Template Variables
-
-The builtin `{{ .AGENT_HOME }}` variable resolves to `/home/<user>` (defaults to `/home/agent`). It can be used in `workdir` and in `runtime_volumes` strings:
+## Full Schema
 
 ```yaml
-workdir: "{{ .AGENT_HOME }}/workspace"
-features:
-  - plugin: custom-runtime
-    runtime_volumes:
-      - "agent-home:{{ .AGENT_HOME }}"
+name: string              # required — agent instance name
+core_version: string      # required — "latest" or semver tag (e.g. "v1.0.0")
+log_level: string         # optional — "info" (default) or "debug"
+runtime_engine: string    # optional — "docker" (default) or "podman"
+
+runtime:
+  image: string           # required — "@builtin/codex", "@builtin/claude-code", "@builtin/pi", or any Docker image
+  extra_builds:           # optional — additional Dockerfile instructions
+    - "RUN apt-get install -y ripgrep"
+    - "ENV MY_VAR=value"
+  entrypoint:             # optional — override container CMD
+    - "my-binary"
+    - "--flag"
+  volumes:                # optional — named or bind mount volumes
+    - "data-vol:/home/agent/data"
+    - "./local:/home/agent/local"
+
+gateway:
+  services:               # optional — external services proxied through the gateway
+    - url: https://api.example.com
+      network: string     # optional — compose network to attach
+      headers:            # optional — injected on every proxied request
+        Authorization: Bearer ${ENV_VAR}
+      middlewares:        # optional — custom Go middleware
+        - custom: ./path/to/middleware.go
+
+installations:            # optional — plugins to install
+  - plugin: "@builtin/github-pat"
+    options:
+      token: "${GITHUB_PAT}"
 ```
 
-When `workdir` is omitted, it defaults to `{{ .AGENT_HOME }}`.
+## Secrets (`.env` file)
 
-## Single Agent
+Credentials are stored in a `.env` file in the project root. The `${VAR}` syntax in `headers` and plugin `options` references these values:
 
+```bash
+# .env
+OPENAI_API_KEY=sk-xxxx
+GITHUB_PAT=ghp_xxxx
 ```
-my-agent/
-  agent.yaml          ← only config file
-  home/               ← override home directory (optional, auto-staged)
-  scripts/            ← entrypoint hooks (optional)
-  .env                ← secrets
-```
+
+Secrets are resolved at generate time and baked into the gateway binary. They never enter the agent container's environment. The `audit` command verifies this.
 
 ## Container Runtime
 
-By default, agent-sandbox uses Docker. To use Podman instead:
+By default, agent-sandbox uses Docker. To use Podman:
 
 ```yaml
-# agent.yaml
 runtime_engine: podman
 ```
 
-Or set the environment variable (takes priority over config):
+Or set the environment variable (takes priority):
 
 ```bash
 AGENT_SANDBOX_RUNTIME=podman agent-sandbox compose up --build
 ```
 
-| Runtime | Compose command | Notes |
-|---------|----------------|-------|
-| docker (default) | `docker compose` | Standard Docker Engine |
-| podman | `podman compose` | Rootless by default, `userns_mode: keep-id` auto-applied |
-
 ## Gateway Services
 
-Services proxied through the gateway use plain `host:port` for internal sidecars or full HTTPS URLs for external endpoints:
+Services declare what external endpoints the agent can reach through the gateway:
 
 ```yaml
 gateway:
   services:
-    - url: https://api.github.com        # external HTTPS (MITM'd for credential injection)
-    - url: sidecar:8080                   # internal service on compose network
+    # External HTTPS — gateway MITMs and injects credentials
+    - url: https://api.openai.com
       headers:
-        Authorization: Bearer ${TOKEN}
+        Authorization: Bearer ${OPENAI_API_KEY}
+
+    # Internal sidecar on compose network
+    - url: sidecar:8080
+      headers:
+        X-Token: ${SIDECAR_TOKEN}
 ```
 
-> **Migration note:** The `docker://` URL scheme is deprecated. Replace `docker://svc:port` with `svc:port`.
+For HTTPS URLs, the gateway terminates TLS (MITM), injects headers, then forwards to the real server. The agent never sees the real credentials.
+
+## Plugins (installations)
+
+Plugins add capabilities to the agent. Each entry needs a `plugin` reference and optional `options`:
 
 ```yaml
-# agent.yaml
-name: coder
-runtime: codex
+installations:
+  - plugin: "@builtin/github-pat"
+    options:
+      token: "${GITHUB_PAT}"
 
-features:
-  - plugin: github
-    token: "${GITHUB_PAT}"
-  - plugin: docker
-  - plugin: telegram
-    access_control:
-      allowed_users: ["@donbader"]
-  - plugin: custom-runtime
-    commands:
-      - "apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find && rm -rf /var/lib/apt/lists/*"
-    entrypoint_hooks:
-      - ./scripts/sync-dotfiles.sh
-    runtime_volumes:
-      - "agent-home:{{ .AGENT_HOME }}"
+  - plugin: "@builtin/home-override"
+    options:
+      home_directory: "./home"
+      volume: true
+
+  - plugin: "@builtin/ssh"
+    options:
+      port: 2222
+      authorized_keys: "./ssh_key.pub"
 ```
 
-## Multi-Agent (Optional)
+Plugin references:
+- `@builtin/name` — bundled plugins (fetched from core releases)
+- `./path` — local plugin in your project directory
+
+See [Plugins](plugins.md) for the full catalog.
+
+## Fleet Mode (Multi-Agent)
+
+For multiple agents, use `fleet.yaml` instead of `agent.yaml`:
 
 ```yaml
 # fleet.yaml
 agents:
-  - coder
-  - reviewer
+  - agent-001
+  - agent-002
 
 shared:
   gateway:
@@ -124,50 +155,41 @@ shared:
           Authorization: Bearer ${STX_LLM_GATEWAY_API_KEY}
   installations:
     - plugin: "@builtin/github-pat"
-      token: "${GITHUB_PAT}"
+      options:
+        token: "${GITHUB_PAT}"
 ```
 
-Per-agent installations **override** shared (same plugin name → per-agent wins). Different plugins merge additively. Shared gateway services are merged into each agent's gateway (same URL → per-agent wins).
+Each agent directory contains its own `agent.yaml`:
 
-## Home & Packages
-
-Managed by the `custom-runtime` plugin. See [plugins.md](plugins.md#custom-runtime-plugin) for details.
-
-| Strategy | Config | Behavior |
-|----------|--------|----------|
-| Ephemeral (default) | no plugin or no `runtime_volumes` | Home resets on restart. Auth token persists via small named volume. |
-| Persistent | `runtime_volumes: ["agent-home:{{ .AGENT_HOME }}"]` | Named volume. Runtime state survives restarts. |
-| Override | `./home/` dir exists | Files staged to /opt/home-override/, cp'd on every start. |
-| Custom hooks | `entrypoint_hooks: [./scripts/...]` | Scripts run on every start (after override copy). |
-| Custom packages | `commands: ["apt-get install ..."]` | RUN during docker build. |
-
-Override mechanism uses `/opt/home-override/` staging (not in volume path). Entrypoint `cp -a` on every start ensures tracked configs always win over runtime state.
-
-## Feature Config
-
-Features are an array of plugin entries. Each entry requires a `plugin` field and optionally a `name` for logging:
-
-```yaml
-features:
-  - plugin: github
-    token: "${GITHUB_PAT}"               # secret reference
-  - plugin: docker                        # no extra config needed
-  - plugin: telegram
-    access_control:
-      allowed_users: ["@donbader"]
-  - plugin: custom-runtime
-    commands: ["apt-get update && apt-get install -y --no-install-recommends ripgrep && rm -rf /var/lib/apt/lists/*"]
-    entrypoint_hooks: [./scripts/setup.sh]
-    runtime_volumes: ["agent-home:{{ .AGENT_HOME }}"]
-  - plugin: external-services
-    services:
-      - url: "https://agent-gateway.stx-ai.net"
-        headers:
-          Authorization: Bearer ${STX_LLM_GATEWAY_API_KEY}
-  - plugin: mcp-oauth
-    providers:
-      notion:
-        mcp_url: https://mcp.notion.com/mcp
+```
+my-fleet/
+  fleet.yaml
+  .env
+  agent-001/
+    agent.yaml
+    home/
+  agent-002/
+    agent.yaml
+    home/
 ```
 
-`true` is shorthand for `{}` (enable with all defaults). CLI validates against each feature's `ConfigSchema()`.
+**Merge rules:**
+- `shared.gateway.services` merges into each agent (same URL → per-agent wins)
+- `shared.installations` merges into each agent (same plugin → per-agent wins)
+- Each agent gets its own gateway container with independently compiled middleware
+
+See [Fleet Mode Guide](guides/fleet-mode.md) for a complete walkthrough.
+
+## Project Structure
+
+```
+my-agent/
+  agent.yaml          ← configuration
+  .env                ← secrets (gitignored)
+  home/               ← files to copy into /home/agent (via home-override plugin)
+  .build/             ← generated artifacts (gitignored)
+    Dockerfile
+    docker-compose.yml
+    gateway-src/
+    schema.json
+```

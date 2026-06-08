@@ -4,61 +4,68 @@ An opinionated agent sandbox orchestrator that deploys AI coding agents inside s
 
 **Philosophy:** One config file, one command. All infrastructure details hidden from the user.
 
-## Requirements
-
-1. User can choose supported runtime agent provider (codex, claude-code, pi)
-2. Agent sandbox enforced (transparent proxy via separate gateway container — cannot be bypassed)
-3. Minimize user configuration efforts
-4. Allow user to customize packages and home directory
-5. Allow agent to spin up Docker containers for development (planned)
-
 ## Architecture
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│  agent-sandbox CLI (user's machine)                            │
-│  - Reads agent.yaml                                            │
-│  - Resolves plugins (runtime + features)                       │
-│  - Generates .build/ (Dockerfile, docker-compose.yml, etc.)    │
-│  - Runs: docker compose up                                     │
-└────────────────────────────────────────────────────────────────┘
-
-         docker compose up
-              │
-    ┌─────────┴──────────────┐
-    ▼                        ▼
-┌──────────────────┐   ┌────────────────────────────────────────┐
-│ Gateway Container│   │ Agent Container                         │
-│ (separate, root) │   │                                        │
-│                  │   │  ┌──────────────────────────────────┐   │
-│ - TCP listener   │   │  │ Channel Manager (TypeScript)     │   │
-│ - SNI extraction │   │  │ - Spawns agent as child process  │   │
-│ - DNS (port 53)  │   │  │ - Loads channel plugins          │   │
-│ - TLS MITM       │   │  │ - No channels → agent standalone │   │
-│ - Cred injection │   │  └──────────────────────────────────┘   │
-│ - Passthrough    │   │                                        │
-│                  │   │  ┌──────────────────────────────────┐   │
-│ Agent's default  │   │  │ Agent Runtime (child process)    │   │
-│ route → gateway  │   │  │ - codex | claude-code | pi       │   │
-│                  │   │  │ - Unaware of proxy or channels   │   │
-│ Real credentials │   │  └──────────────────────────────────┘   │
-│ stay HERE only   │   │                                        │
-└──────────────────┘   └────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ Host                                                          │
+│                                                               │
+│  agent-sandbox CLI                                            │
+│  - Reads agent.yaml / fleet.yaml                              │
+│  - Resolves plugins (@builtin/ and local)                     │
+│  - Generates .build/ (Dockerfile, compose, gateway)           │
+│  - Runs: docker compose up                                    │
+│                                                               │
+│  ┌─────────────────┐       ┌───────────────────────────────┐ │
+│  │ Gateway          │◄──────│ Agent Container                │ │
+│  │  TCP proxy       │ DNAT │  iptables → gateway:8443       │ │
+│  │  DNS (port 53)   │      │  CA cert trusted               │ │
+│  │  TLS MITM        │      │  Runs as unprivileged user     │ │
+│  │  Cred injection  │      │  Agent runtime (codex, etc.)   │ │
+│  │  Log redaction   │      │  Optional: agent-manager + ACP │ │
+│  │                  │      │  Optional: channel sidecars    │ │
+│  │  Real credentials│      │                               │ │
+│  │  stay HERE only  │      │  Dummy tokens only             │ │
+│  └─────────────────┘       └───────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 **Key security property:** The agent container cannot read real credentials. All secrets live in the gateway container. The agent uses dummy tokens; the gateway intercepts requests and swaps in real credentials.
 
-## Documents
+## User Documentation
 
 | Doc | Description |
 |-----|-------------|
-| [Configuration](configuration.md) | User config, home directory, packages |
-| [Plugins](plugins.md) | Runtime, credential, channel, and feature plugins |
+| [Getting Started](getting-started.md) | Install, configure, and run your first agent |
+| [Configuration](configuration.md) | agent.yaml, fleet.yaml, and .env reference |
+| [Plugins](plugins.md) | Available plugins and their options |
+| [Security](security.md) | Isolation model, threat mitigations |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
-| [Security](security.md) | Network model, hardening, Docker access |
-| [Plugin System](plugin-system.md) | SDK interface, plugin structure, resolution logic |
-| [Build & Deploy](build-and-deploy.md) | Build flow, Dockerfile, distribution |
-| [Gateway Internals](gateway-internals.md) | Proxy architecture, MITM pipeline, DNS, rewriters |
-| [CLI & UX](cli-and-ux.md) | Commands, UX design, DX for plugin authors |
-| [Decisions](decisions.md) | Key decisions, comparison with agent-fleet, maintainability |
-| [Roadmap](roadmap.md) | Phased implementation plan |
+
+## Guides
+
+| Guide | Description |
+|-------|-------------|
+| [Fleet Mode](guides/fleet-mode.md) | Multi-agent setup with shared credentials |
+| [Creating Plugins](guides/creating-plugins.md) | Build your own plugin (plugin.yaml, middleware, templates) |
+
+## Reference
+
+| Doc | Description |
+|-----|-------------|
+| [CLI](reference/cli.md) | Commands, flags, environment variables |
+| [Audit](reference/audit.md) | Security contract verification checks |
+| [ACP Protocol](reference/channel-manager-protocol.md) | Agent Client Protocol specification |
+| [Docker API Proxy](reference/docker-api-proxy.md) | Planned Docker API validation design |
+| [ADRs](reference/adr/) | Architecture Decision Records |
+
+## Internals (Contributors)
+
+| Doc | Description |
+|-----|-------------|
+| [Build Pipeline](internals/build-pipeline.md) | Generate flow, Dockerfile templates, core fetching |
+| [Gateway](internals/gateway.md) | Proxy architecture, MITM pipeline, DNS, middleware SDK |
+| [Plugin System](internals/plugin-system.md) | Resolution, rendering, compilation, fleet merging |
+| [Logging](internals/logging.md) | Structured logging standards (Go + TypeScript) |
+| [Decisions](internals/decisions.md) | Key decisions, comparison with agent-fleet |
+| [Roadmap](internals/roadmap.md) | Phased implementation plan |

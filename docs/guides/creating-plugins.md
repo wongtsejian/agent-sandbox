@@ -228,10 +228,13 @@ See `core/plugins/github-pat/middlewares/` for a working example.
 
 ```yaml
 name: test-agent
-runtime: codex
-features:
-  - plugin: my-plugin
-    token: "${MY_TOKEN}"
+core_version: latest
+runtime:
+  image: "@builtin/codex"
+installations:
+  - plugin: ./plugins/my-plugin
+    options:
+      token: "${MY_TOKEN}"
 ```
 
 2. Run generate and inspect the output:
@@ -288,9 +291,10 @@ contributes:
 **4. Use in agent.yaml:**
 
 ```yaml
-features:
-  - plugin: example-auth
-    token: "${EXAMPLE_TOKEN}"
+installations:
+  - plugin: "@builtin/example-auth"
+    options:
+      token: "${EXAMPLE_TOKEN}"
 ```
 
 **5. Verify:** run `agent-sandbox generate` and confirm `config.yaml` contains the `api.example.com` service entry with the middleware wired in.

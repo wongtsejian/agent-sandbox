@@ -13,7 +13,7 @@ A new host key is generated at build time. If you need a persistent host key (to
 ```yaml
 # agent.yaml
 installations:
-  - plugin: ssh
+  - plugin: "@builtin/ssh"
     options:
       port: 2222
       authorized_keys: "./ssh_key.pub"

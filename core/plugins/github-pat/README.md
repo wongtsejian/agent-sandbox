@@ -6,14 +6,14 @@ Injects a GitHub Personal Access Token into all requests to `github.com` and `ap
 
 The middleware intercepts HTTPS traffic to GitHub domains and adds HTTP Basic authentication using your PAT. Git CLI, `gh`, and any HTTPS-based GitHub access from the agent will be authenticated — without the token ever being exposed in the agent's environment.
 
-The token is baked into the gateway binary at generate-time (not passed as an env var at runtime).
+The token is baked into the gateway binary at generate-time (not passed as an env var at runtime). The gateway also sets `GH_TOKEN=dummy` and `GITHUB_TOKEN=dummy` in the agent environment so that git/gh CLI attempt authentication (without these, git skips auth entirely and the gateway never gets a chance to intercept).
 
 ## Usage
 
 ```yaml
 # agent.yaml
 installations:
-  - plugin: github-pat
+  - plugin: "@builtin/github-pat"
     options:
       token: "${GITHUB_PAT}"
 ```

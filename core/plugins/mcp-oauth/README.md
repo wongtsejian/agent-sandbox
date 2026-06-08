@@ -4,16 +4,16 @@ Provides OAuth token storage for MCP (Model Context Protocol) providers via a sh
 
 ## How It Works
 
-Declares a named volume (`oauth-tokens`) mounted into the gateway container at a configurable path. MCP providers that require OAuth can store and read token files from this shared location.
+Declares a named volume (`oauth-tokens`) mounted into both the gateway and agent containers at a configurable path. MCP providers that require OAuth can store and read token files from this shared location.
 
-> **Note:** This plugin currently only handles the volume declaration. Users must manually declare gateway services for each MCP provider endpoint in their `agent.yaml`. Full automation (dynamic service entries from provider URLs) is planned for a future release.
+> **Note:** This plugin currently only handles the volume declaration. You must manually declare gateway services for each MCP provider endpoint in your `agent.yaml`. Full automation (dynamic service entries from provider URLs) is planned.
 
 ## Usage
 
 ```yaml
 # agent.yaml
 installations:
-  - plugin: mcp-oauth
+  - plugin: "@builtin/mcp-oauth"
     options:
       providers:
         notion:
@@ -27,13 +27,19 @@ gateway:
         Authorization: Bearer ${NOTION_TOKEN}
 ```
 
+```bash
+# .env
+NOTION_TOKEN=ntn_xxxx
+```
+
 ## Options
 
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
-| `providers` | object | yes | — | Map of provider name to MCP config |
+| `providers` | object | yes | — | Map of provider name to config. Each provider needs at least `mcp_url`. |
 | `token_dir` | string | no | `/data/oauth-tokens` | Directory for OAuth token files |
 
 ## What It Contributes
 
 - **Gateway:** Shared volume `oauth-tokens` mounted at `token_dir`
+- **Agent:** Same volume accessible for MCP client token reads

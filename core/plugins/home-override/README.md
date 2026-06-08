@@ -1,27 +1,61 @@
-# home-override Plugin
+# home-override
 
-Mounts a local directory from your project into the agent container as the agent's home directory (`/home/agent/`). Use this to ship dotfiles, config files, scripts, or any other home directory contents with your agent.
+Mounts a local directory from your project into the agent container as `/home/agent/`. Use this to ship dotfiles, config files, scripts, or any other home directory contents with your agent.
 
-## Configuration
+## Usage
 
 ```yaml
-features:
-  - plugin: home-override
-    home_directory: ./home          # required: path to local dir, relative to project root
-    volume: false                   # optional: persist home across restarts (default: false)
+installations:
+  - plugin: "@builtin/home-override"
+    options:
+      home_directory: "./home"
+      volume: true
 ```
 
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `home_directory` | string | yes | Local directory to mount as `/home/agent/`. Relative to project root. |
-| `volume` | boolean | no | If `true`, contents are copied into a named Docker volume (`agent-home`) on first run and persisted across restarts. If `false` (default), the directory is bind-mounted directly. |
+## Options
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `home_directory` | string | yes | — | Local directory to mount as `/home/agent/`. Relative to project root. |
+| `volume` | boolean | no | `false` | If `true`, persist home across restarts via a named Docker volume. |
 
 ## How It Works
 
-**Build time:** The plugin adds a `COPY` step to the Dockerfile that copies `home_directory` into `/home/agent/` and sets correct ownership.
+**Build time:** Adds a `COPY` step to the Dockerfile that copies `home_directory` into `/home/agent/` with correct ownership.
 
-**Runtime:**
-- `volume: false` — bind-mounts `home_directory` directly to `/home/agent/`. Changes on the host are reflected immediately; changes in the container are visible on the host.
-- `volume: true` — mounts a named Docker volume at `/home/agent/`. The volume is seeded from the image contents (which include the copied `home_directory`) on first run. Subsequent restarts use the persisted volume data.
+**Runtime (volume: false):** Bind-mounts `home_directory` directly to `/home/agent/`. Changes on the host are reflected immediately inside the container, and vice versa.
+
+**Runtime (volume: true):** Mounts a named Docker volume at `/home/agent/`. The volume is seeded from the image contents (which include the copied directory) on first run. Subsequent restarts use the persisted volume data.
 
 Use `volume: true` when the agent writes state to its home directory that should survive container restarts (e.g., auth tokens, shell history, tool caches).
+
+## What It Contributes
+
+- **Runtime (build):** `COPY` of home directory into `/home/agent/` with ownership set to the agent user
+- **Runtime (volumes):** Named volume `<agent-name>-home` when `volume: true`
+
+## Example
+
+```
+my-agent/
+  agent.yaml
+  home/
+    .codex/
+      config.toml       ← provider config
+      models.json       ← model catalog
+    .gitconfig          ← git identity
+    .bashrc             ← shell customization
+```
+
+```yaml
+# agent.yaml
+name: coder
+core_version: latest
+runtime:
+  image: "@builtin/codex"
+installations:
+  - plugin: "@builtin/home-override"
+    options:
+      home_directory: "./home"
+      volume: true
+```

@@ -1,194 +1,156 @@
 # Plugins
 
-## Runtime Plugins
+Available plugins that extend agent-sandbox. All builtin plugins use the `@builtin/` prefix.
 
-Runtime plugins are pure data (YAML). They define the base image, install commands, and default CMD. Selected by the `runtime:` field in agent.yaml. Only one per agent.
+## Runtime Presets
 
-```yaml
-runtime: codex    # reads plugins/codex/runtime.yaml
-```
-
-### Built-in Runtimes
-
-| Runtime | Base Image | Packages | CMD |
-|---------|-----------|----------|-----|
-| `codex` | node:22-slim | git, curl, @openai/codex | sleep infinity |
-| `claude-code` | node:22-slim | git, curl, @anthropic-ai/claude-code | sleep infinity |
-| `pi` | node:22-slim | git, curl, pi-coding-agent | sleep infinity |
-
-Default CMD is `sleep infinity` because without a channel manager, there's no way to send prompts. When a channel feature is active, channel manager becomes the entrypoint and spawns the agent CLI (e.g., `codex exec`).
-
-### Custom Runtime (Inline)
-
-For runtimes not shipped with the CLI:
+Runtime presets define the agent's base image, packages, and default command. Selected via `runtime.image`:
 
 ```yaml
-name: my-agent
 runtime:
-  base_image: python:3.12-slim
-  install:
-    - pip install my-agent-cli
-  cmd: ["my-agent-cli", "--headless"]
+  image: "@builtin/codex"
 ```
 
-Or create `plugins/my-runtime/runtime.yaml` in your project directory.
+| Preset | Base Image | Agent | Use Case |
+|--------|-----------|-------|----------|
+| `@builtin/codex` | node:24-slim | OpenAI Codex | AI coding with OpenAI models |
+| `@builtin/claude-code` | node:24-slim | Anthropic Claude Code | AI coding with Claude models |
+| `@builtin/pi` | node:24-slim | Pi Coding Agent | Pi-based coding |
 
-### runtime.yaml Format
+For custom runtimes not shipped with the CLI:
 
 ```yaml
-name: codex
-base_image: node:22-slim
-install:
-  - apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates
-  - npm install -g @openai/codex
-cmd: ["sleep", "infinity"]
-user: agent
+runtime:
+  image: python:3.12-slim
+  extra_builds:
+    - "RUN pip install my-agent-cli"
+  entrypoint: ["my-agent-cli", "--headless"]
 ```
 
 ## Feature Plugins
 
-Additive capabilities. Multiple per agent. Listed under `features:` in config.
+### @builtin/github-pat
 
-Feature plugins are hybrid — YAML metadata + optional Go code (gateway) + optional TypeScript (channel).
-
-### Credential Features
-
-| Plugin | Hosts | Injection | Has gateway/ | Status |
-|--------|-------|-----------|-------------|--------|
-| `github-pat` | github.com, *.github.com | Header: `Authorization: token <PAT>` | yes | available |
-| `external-services` | user-defined (host:port or https://) | Static header injection | yes | available |
-| `mcp-oauth` | user-defined MCP server URL | OAuth2 token refresh | yes | **planned** |
-
-Note: LLM API credentials (OpenAI, Anthropic) are handled by the runtime itself (codex device flow, claude login). No dedicated plugins needed.
-
-### Agent Manager
-
-| Plugin | What it does | Status |
-|--------|-------------|--------|
-| `agent-manager-acp` | ACP proxy — spawns agent, exposes HTTP/WebSocket for channel adapters | available (core built-in) |
-
-#### agent-manager-acp
-
-Spawns an ACP-compatible agent process and exposes it over HTTP/WebSocket. Channel adapter sidecars connect to this service to send/receive messages.
-
-- Performs ACP handshake at startup (initialize + authenticate)
-- Intercepts client init/auth, injects `mcpServers` into session/new
-- Assets: contains the agent-manager TypeScript source (compiled during Docker build)
+Injects a GitHub PAT into all requests to `github.com` and `api.github.com` via the gateway.
 
 ```yaml
-features:
-  - plugin: agent-manager-acp
-    acp_command: ["codex", "exec", "--headless"]  # required — command to spawn
-    port: "3100"                                   # optional, default "3100"
+installations:
+  - plugin: "@builtin/github-pat"
+    options:
+      token: "${GITHUB_PAT}"
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `acp_command` | yes | Array — the command to spawn as the agent process |
-| `port` | no | HTTP/WebSocket listen port (default: `"3100"`) |
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `token` | string | yes | GitHub PAT. Use `${ENV_VAR}` to reference `.env` |
 
-### Channel Features
+The gateway adds HTTP Basic auth to all GitHub HTTPS requests. Git CLI, `gh`, and any HTTPS-based GitHub access is authenticated without the token entering the agent environment.
 
-Channel adapters are **sidecars** — separate Docker containers that connect to agent-manager via WebSocket. Each channel plugin contributes gateway middleware (for credential injection) plus a sidecar service definition.
+---
 
-| Plugin | Gateway | Sidecar | Requires | Status |
-|--------|---------|---------|----------|--------|
-| `telegram` | MITM api.telegram.org, inject bot token | telegram-adapter (WebSocket → agent-manager) | `@builtin/agent-manager-acp` | available |
-| `slack` | MITM slack.com, OAuth token refresh | slack-adapter | `@builtin/agent-manager-acp` | **planned** |
+### @builtin/home-override
 
-### Infrastructure Features
-
-| Plugin | What it does | Has gateway/ | Has channel/ | Status |
-|--------|-------------|-------------|-------------|--------|
-| `custom-runtime` | Custom commands, hooks, volumes | no | no | available |
-| `external-services` | Connect to Docker/HTTPS services, inject headers | yes | no | available |
-| `docker` | DinD sidecar, DOCKER_HOST env, API validation | yes | no | **planned** |
-
-### custom-runtime
-
-Gives users direct control over image build commands, startup hooks, and persistent volumes.
+Mounts a local directory into the agent container as `/home/agent/`.
 
 ```yaml
-features:
-  - plugin: custom-runtime
-    commands:
-      - "apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find && rm -rf /var/lib/apt/lists/*"
-      - "npm install -g typescript"
-    entrypoint_hooks:
-      - ./scripts/sync-dotfiles.sh
-      - ./scripts/setup-git.sh
-    runtime_volumes:
-      - "agent-home:{{ .AGENT_HOME }}"
+installations:
+  - plugin: "@builtin/home-override"
+    options:
+      home_directory: "./home"
+      volume: true
 ```
 
-| Field | Effect |
-|-------|--------|
-| `commands` | RUN during docker build (after base packages) |
-| `entrypoint_hooks` | Scripts run on every container start (before agent) |
-| `runtime_volumes` | Named volumes mounted at runtime |
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `home_directory` | string | yes | — | Local directory (relative to project root) |
+| `volume` | boolean | no | `false` | Persist home across restarts via named Docker volume |
 
-The `./home/` override directory (if present) is auto-staged to `/opt/home-override/` and cp'd by a built-in entrypoint hook.
+**Without volume:** Bind-mounts the directory directly. Host and container share changes.
+**With volume:** Contents seeded into a named volume on first run. Survives container restarts.
 
-### mcp-oauth
+---
 
-OAuth Bearer token injection for remote MCP servers. Interactive setup via `/oauth` command, automatic token refresh at runtime.
+### @builtin/ssh
+
+SSH server inside the agent container for remote development access.
 
 ```yaml
-features:
-  - plugin: mcp-oauth
-    providers:
-      notion:
-        mcp_url: https://mcp.notion.com/mcp  # uses Dynamic Client Registration
-      slack:
-        mcp_url: https://mcp.slack.com/mcp
-        client_id: "pre-registered-id"        # optional — skip if server supports DCR
-        client_id: "slack-client-id"
-        client_secret: "${SLACK_CLIENT_SECRET}"
-    token_dir: /data/oauth-tokens  # optional
+installations:
+  - plugin: "@builtin/ssh"
+    options:
+      port: 2222
+      authorized_keys: "./ssh_key.pub"
 ```
 
-Handles: RFC 9728 discovery, PKCE authorization, token exchange, auto-refresh. User triggers auth via channel command (`/oauth notion`). See [plugin README](../internal/plugins/mcp-oauth/README.md) for full details.
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `port` | integer | no | `2222` | SSH port exposed on the host |
+| `authorized_keys` | string | yes | — | Path to public key file (relative to project root) |
 
-### telegram
+Key-only auth. No passwords. Connect with `ssh -p 2222 agent@localhost`.
 
-A sidecar-based channel adapter that connects to agent-manager via WebSocket. Contributes gateway middleware (telegram token rewrite) and a sidecar service (telegram-adapter).
+---
 
-Requires `@builtin/agent-manager-acp`.
+### @builtin/mcp-oauth
+
+OAuth token storage for MCP (Model Context Protocol) providers via a shared volume.
 
 ```yaml
-features:
-  - plugin: agent-manager-acp
-    acp_command: ["codex", "exec", "--headless"]
-  - plugin: telegram
-    bot_token: "${TELEGRAM_BOT_TOKEN}"
-    allowed_users: ["@donbader"]         # optional
-    agent_manager_port: "3100"           # optional, default "3100"
+installations:
+  - plugin: "@builtin/mcp-oauth"
+    options:
+      providers:
+        notion:
+          mcp_url: https://mcp.notion.com/mcp
+      token_dir: "/data/oauth-tokens"
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `bot_token` | yes | Telegram bot token (env var reference) |
-| `allowed_users` | no | Array of allowed Telegram usernames |
-| `agent_manager_port` | no | Port to connect to agent-manager (default: `"3100"`) |
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `providers` | object | yes | — | Map of provider name to MCP config (`mcp_url` required per provider) |
+| `token_dir` | string | no | `/data/oauth-tokens` | Directory for OAuth token files |
 
-Gateway: MITM on api.telegram.org, injects bot token via URL rewrite.
-Sidecar: telegram-adapter container connects to `ws://agent:<port>/acp`, bridges Telegram messages to the agent via ACP.
+You must also declare the provider endpoints as gateway services in your `agent.yaml`.
 
-### github-pat
+---
+
+### @builtin/agent-manager-acp
+
+ACP proxy that spawns an agent process and exposes it over HTTP/WebSocket for channel adapters.
 
 ```yaml
-features:
-  - plugin: github-pat
-    token: "${GITHUB_PAT}"
+installations:
+  - plugin: "@builtin/agent-manager-acp"
+    options:
+      acp_command: ["codex-acp"]
+      port: "3100"
 ```
 
-Gateway: MITM on github.com/api.github.com, injects `Authorization: token <PAT>` header.
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `acp_command` | array | yes | — | Command to spawn as the agent process |
+| `port` | string | no | `"3100"` | HTTP/WebSocket listen port |
 
-### docker (planned)
+Performs ACP handshake (initialize + authenticate) at startup. Channel adapters (like telegram) connect via WebSocket to send/receive messages. See the [ACP protocol reference](reference/channel-manager-protocol.md) for details.
+
+---
+
+## Local Plugins
+
+Project-local plugins are referenced with a `./` path:
 
 ```yaml
-features:
-  - plugin: docker
+installations:
+  - plugin: ./plugins/my-plugin
+    options:
+      key: value
 ```
 
-Adds DinD sidecar service, installs docker CLI, sets DOCKER_HOST, validates Docker API requests via gateway.
+See [Creating Plugins](guides/creating-plugins.md) for how to build your own.
+
+## Planned Plugins
+
+| Plugin | Purpose | Status |
+|--------|---------|--------|
+| `@builtin/docker` | DinD sidecar with Docker API validation proxy | Planned |
+| `@builtin/slack` | Slack channel adapter (like telegram) | Planned |
