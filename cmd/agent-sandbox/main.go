@@ -129,56 +129,137 @@ func initCmd() *cobra.Command {
 		Use:   "init",
 		Short: "Initialize a new agent-sandbox project (interactive)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Check if agent.yaml already exists
+			// Check if agent.yaml or fleet.yaml already exists
 			if _, err := os.Stat("agent.yaml"); err == nil {
 				return fmt.Errorf("agent.yaml already exists in this directory")
+			}
+			if _, err := os.Stat("fleet.yaml"); err == nil {
+				return fmt.Errorf("fleet.yaml already exists in this directory")
 			}
 
 			reader := bufio.NewReader(os.Stdin)
 
-			// Agent name
-			dirName := filepath.Base(mustCwd())
-			name := prompt(reader, fmt.Sprintf("Agent name [%s]: ", dirName))
-			if name == "" {
-				name = dirName
+			// Fleet mode selection
+			agentCountStr := prompt(reader, "How many agents? [1]: ")
+			agentCount := 1
+			if agentCountStr != "" {
+				if _, err := fmt.Sscanf(agentCountStr, "%d", &agentCount); err != nil || agentCount < 1 {
+					return fmt.Errorf("invalid agent count: %q (must be a positive integer)", agentCountStr)
+				}
 			}
 
-			// Runtime selection
-			fmt.Println("\nAvailable runtimes:")
-			fmt.Println("  1) codex       — OpenAI Codex")
-			fmt.Println("  2) claude-code — Anthropic Claude Code")
-			fmt.Println("  3) pi          — Pi coding agent")
-			runtimeChoice := prompt(reader, "Runtime [1]: ")
-			rt := "codex"
-			switch strings.TrimSpace(runtimeChoice) {
-			case "2":
-				rt = "claude-code"
-			case "3":
-				rt = "pi"
+			if agentCount == 1 {
+				return initSingleAgent(reader)
 			}
-
-			// Generate V1-shaped agent.yaml
-			var b strings.Builder
-			b.WriteString("# yaml-language-server: $schema=.build/schema.json\n")
-			_, _ = fmt.Fprintf(&b, "name: %s\n", name)
-			b.WriteString("core_version: v1.0.0\n")
-			b.WriteString("runtime:\n")
-			_, _ = fmt.Fprintf(&b, "  image: \"@builtin/%s\"\n", rt)
-			b.WriteString("  entrypoint: [\"sleep\", \"infinity\"]\n")
-			b.WriteString("gateway:\n")
-			b.WriteString("  services: []\n")
-			b.WriteString("installations: []\n")
-
-			if err := os.WriteFile("agent.yaml", []byte(b.String()), 0644); err != nil {
-				return fmt.Errorf("writing agent.yaml: %w", err)
-			}
-
-			fmt.Println("Created agent.yaml")
-			fmt.Println("\nNext steps:")
-			fmt.Println("  agent-sandbox generate")
-			fmt.Println("  agent-sandbox compose up --build -d")
-			return nil
+			return initFleet(reader, agentCount)
 		},
+	}
+}
+
+func initSingleAgent(reader *bufio.Reader) error {
+	dirName := filepath.Base(mustCwd())
+	name := prompt(reader, fmt.Sprintf("Agent name [%s]: ", dirName))
+	if name == "" {
+		name = dirName
+	}
+
+	rt := selectRuntime(reader)
+
+	var b strings.Builder
+	b.WriteString("# yaml-language-server: $schema=.build/schema.json\n")
+	_, _ = fmt.Fprintf(&b, "name: %s\n", name)
+	b.WriteString("core_version: latest\n")
+	b.WriteString("runtime:\n")
+	_, _ = fmt.Fprintf(&b, "  image: \"@builtin/%s\"\n", rt)
+	b.WriteString("  entrypoint: [\"sleep\", \"infinity\"]\n")
+	b.WriteString("gateway:\n")
+	b.WriteString("  services: []\n")
+	b.WriteString("installations: []\n")
+
+	if err := os.WriteFile("agent.yaml", []byte(b.String()), 0644); err != nil {
+		return fmt.Errorf("writing agent.yaml: %w", err)
+	}
+
+	fmt.Println("\nCreated agent.yaml")
+	fmt.Println("\nNext steps:")
+	fmt.Println("  1. Add gateway services and plugins to agent.yaml")
+	fmt.Println("  2. Create .env with your secrets")
+	fmt.Println("  3. agent-sandbox generate")
+	fmt.Println("  4. agent-sandbox compose up --build -d")
+	return nil
+}
+
+func initFleet(reader *bufio.Reader, count int) error {
+	rt := selectRuntime(reader)
+
+	// Generate fleet.yaml
+	var fleet strings.Builder
+	fleet.WriteString("# yaml-language-server: $schema=.build/fleet-schema.json\n")
+	fleet.WriteString("agents:\n")
+	for i := 1; i <= count; i++ {
+		_, _ = fmt.Fprintf(&fleet, "  - agent-%03d\n", i)
+	}
+	fleet.WriteString("\nshared:\n")
+	fleet.WriteString("  gateway:\n")
+	fleet.WriteString("    services: []\n")
+	fleet.WriteString("  installations: []\n")
+
+	if err := os.WriteFile("fleet.yaml", []byte(fleet.String()), 0644); err != nil {
+		return fmt.Errorf("writing fleet.yaml: %w", err)
+	}
+
+	// Generate per-agent directories
+	for i := 1; i <= count; i++ {
+		agentName := fmt.Sprintf("agent-%03d", i)
+		if err := os.MkdirAll(agentName, 0755); err != nil {
+			return fmt.Errorf("creating %s/: %w", agentName, err)
+		}
+
+		var agent strings.Builder
+		agent.WriteString("# yaml-language-server: $schema=../.build/schema.json\n")
+		_, _ = fmt.Fprintf(&agent, "name: %s\n", agentName)
+		agent.WriteString("core_version: latest\n")
+		agent.WriteString("runtime:\n")
+		_, _ = fmt.Fprintf(&agent, "  image: \"@builtin/%s\"\n", rt)
+		agent.WriteString("installations: []\n")
+
+		agentPath := filepath.Join(agentName, "agent.yaml")
+		if err := os.WriteFile(agentPath, []byte(agent.String()), 0644); err != nil {
+			return fmt.Errorf("writing %s: %w", agentPath, err)
+		}
+	}
+
+	// Generate .env.example
+	if err := os.WriteFile(".env.example", []byte("# Shared secrets\n"), 0644); err != nil {
+		return fmt.Errorf("writing .env.example: %w", err)
+	}
+
+	fmt.Printf("\nCreated fleet.yaml with %d agents\n", count)
+	for i := 1; i <= count; i++ {
+		fmt.Printf("  agent-%03d/agent.yaml\n", i)
+	}
+	fmt.Println("\nNext steps:")
+	fmt.Println("  1. Add shared gateway services and plugins to fleet.yaml")
+	fmt.Println("  2. Customize per-agent config in each agent-NNN/agent.yaml")
+	fmt.Println("  3. Create .env with your secrets")
+	fmt.Println("  4. agent-sandbox generate")
+	fmt.Println("  5. agent-sandbox compose up --build -d")
+	return nil
+}
+
+func selectRuntime(reader *bufio.Reader) string {
+	fmt.Println("\nAvailable runtimes:")
+	fmt.Println("  1) codex       — OpenAI Codex")
+	fmt.Println("  2) claude-code — Anthropic Claude Code")
+	fmt.Println("  3) pi          — Pi coding agent")
+	choice := prompt(reader, "Runtime [1]: ")
+	switch strings.TrimSpace(choice) {
+	case "2":
+		return "claude-code"
+	case "3":
+		return "pi"
+	default:
+		return "codex"
 	}
 }
 
