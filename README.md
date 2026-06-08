@@ -2,6 +2,8 @@
 
 Deploy AI coding agents in Docker containers with transparent egress proxy, credential injection, and messaging channels.
 
+**Philosophy:** One config file, one command. All infrastructure details hidden from the user.
+
 ## Features
 
 - **Data-driven plugins** — runtime presets (codex, claude-code, pi) and feature plugins configured via YAML
@@ -64,45 +66,78 @@ agent-sandbox audit             # verify running sandbox meets security contract
 agent-sandbox upgrade           # self-update to latest release
 ```
 
+Use `-C` to target a different project directory without switching to it:
+
+```bash
+agent-sandbox -C examples/multi-agent generate
+agent-sandbox -C examples/multi-agent compose up --build
+```
+
 ## Architecture
 
 ```
-┌───────────────────────────────────────────────────────────┐
-│ Host                                                      │
-│                                                           │
-│  ┌─────────────────┐       ┌────────────────────────────┐ │
-│  │ Gateway         │◄──────│ Agent Container            │ │
-│  │  MITM proxy     │ DNAT  │  iptables → gateway:8443   │ │
-│  │  DNS (port 53)  │       │  CA cert installed         │ │
-│  │  Cred injection │       │  Runs as unprivileged user │ │
-│  │  Log redaction  │       │  Agent runtime (codex etc) │ │
-│  └─────────────────┘       └────────────────────────────┘ │
-│         │                                                 │
-│         ▼                                                 │
-│  Real APIs (OpenAI, GitHub, etc.)                         │
-└───────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ Host                                                          │
+│                                                               │
+│  agent-sandbox CLI                                            │
+│  - Reads agent.yaml / fleet.yaml                              │
+│  - Resolves plugins (@builtin/ and local)                     │
+│  - Generates .build/ (Dockerfile, compose, gateway)           │
+│  - Runs: docker compose up                                    │
+│                                                               │
+│  ┌─────────────────┐       ┌───────────────────────────────┐ │
+│  │ Gateway          │◄──────│ Agent Container                │ │
+│  │  TCP proxy       │ DNAT │  iptables → gateway:8443       │ │
+│  │  DNS (port 53)   │      │  CA cert trusted               │ │
+│  │  TLS MITM        │      │  Runs as unprivileged user     │ │
+│  │  Cred injection  │      │  Agent runtime (codex, etc.)   │ │
+│  │  Log redaction   │      │  Optional: agent-manager + ACP │ │
+│  │                  │      │  Optional: channel sidecars    │ │
+│  │  Real credentials│      │                               │ │
+│  │  stay HERE only  │      │  Dummy tokens only             │ │
+│  └─────────────────┘       └───────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-All outbound HTTPS from the agent is transparently redirected to the gateway via iptables DNAT. The gateway terminates TLS, injects real credentials, and forwards to the upstream API. The agent never sees actual secrets.
+**Key security property:** The agent container cannot read real credentials. All secrets live in the gateway container. The agent uses dummy tokens; the gateway intercepts requests and swaps in real credentials.
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md) — install, configure, run
-- [Configuration](docs/configuration.md) — agent.yaml and fleet.yaml reference
-- [Plugins](docs/plugins.md) — available plugins and their options
-- [Security](docs/security.md) — isolation model and threat mitigations
-- [Troubleshooting](docs/troubleshooting.md) — common issues and fixes
+| Doc | Description |
+|-----|-------------|
+| [Getting Started](docs/getting-started.md) | Install, configure, and run your first agent |
+| [Configuration](docs/configuration.md) | agent.yaml, fleet.yaml, and .env reference |
+| [Plugins](docs/plugins.md) | Available plugins and their options |
+| [Security](docs/security.md) | Isolation model, threat mitigations |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues and fixes |
 
 **Guides:**
 
-- [Fleet Mode](docs/guides/fleet-mode.md) — multi-agent setup
-- [Creating Plugins](docs/guides/creating-plugins.md) — build your own plugin
+| Guide | Description |
+|-------|-------------|
+| [Fleet Mode](docs/guides/fleet-mode.md) | Multi-agent setup with shared credentials |
+| [Creating Plugins](docs/guides/creating-plugins.md) | Build your own plugin (plugin.yaml, middleware, templates) |
 
 **Reference:**
 
-- [CLI](docs/reference/cli.md) — commands, flags, environment variables
-- [Audit](docs/reference/audit.md) — security contract verification
-- [Plugin YAML Schema](docs/reference/plugin-yaml.md) — plugin.yaml specification
+| Doc | Description |
+|-----|-------------|
+| [CLI](docs/reference/cli.md) | Commands, flags, environment variables |
+| [Audit](docs/reference/audit.md) | Security contract verification checks |
+| [ACP Protocol](docs/reference/channel-manager-protocol.md) | Agent Client Protocol specification |
+| [Docker API Proxy](docs/reference/docker-api-proxy.md) | Docker API validation design |
+| [ADRs](docs/reference/adr/) | Architecture Decision Records |
+
+**Internals (Contributors):**
+
+| Doc | Description |
+|-----|-------------|
+| [Build Pipeline](docs/internals/build-pipeline.md) | Generate flow, Dockerfile templates, core fetching |
+| [Gateway](docs/internals/gateway.md) | Proxy architecture, MITM pipeline, DNS, middleware SDK |
+| [Plugin System](docs/internals/plugin-system.md) | Resolution, rendering, compilation, fleet merging |
+| [Logging](docs/internals/logging.md) | Structured logging standards (Go + TypeScript) |
+| [Decisions](docs/internals/decisions.md) | Key decisions, comparison with agent-fleet |
+| [Roadmap](docs/internals/roadmap.md) | Phased implementation plan |
 
 See [examples/](examples/) for working setups.
 
