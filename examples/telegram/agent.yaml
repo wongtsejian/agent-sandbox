@@ -7,7 +7,6 @@ log_level: debug
 runtime:
   image: "@builtin/codex"
   extra_builds:
-    - "RUN npm install -g @agentclientprotocol/codex-acp"
     - "ENV OPENAI_API_KEY=gateway-managed"
   entrypoint: ["node", "/opt/agent-manager/dist/index.js"]
 
@@ -26,6 +25,7 @@ installations:
   - plugin: "@builtin/agent-manager-acp"
     options:
       acp_command: ["codex-acp"]
+      acp_install: "npm install -g @zed-industries/codex-acp@0.15.0"
 
   - plugin: ./plugins/telegram
     options:
