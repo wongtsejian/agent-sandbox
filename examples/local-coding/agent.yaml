@@ -15,3 +15,8 @@ installations:
     options:
       home_directory: "./home"
       volume: true
+  - plugin: "@builtin/mcp-oauth"
+    options:
+      providers:
+        notion:
+          mcp_url: https://mcp.notion.com/mcp

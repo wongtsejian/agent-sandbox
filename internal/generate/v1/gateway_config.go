@@ -19,12 +19,21 @@ type GatewayConfigOutput struct {
 	Services    []GatewayServiceOutput
 	Middlewares []MiddlewareRef   // custom .go files to copy with domain scope
 	AuthHeaders []AuthHeaderEntry // auth-header entries to generate as .go files
+	Routes      []RouteRef        // route handler .go files with namespaced paths
+	PublicURL   string            // gateway public URL for callbacks
 }
 
 // MiddlewareRef associates a custom middleware file with its target domains.
 type MiddlewareRef struct {
 	Path    string   // relative or absolute path to .go file
 	Domains []string // domains this middleware applies to
+}
+
+// RouteRef associates a route handler file with its namespaced path.
+type RouteRef struct {
+	Path       string // namespaced URL path (e.g. /plugins/mcp-oauth/callback)
+	Handler    string // path to handler .go file
+	PluginName string // plugin that contributed this route
 }
 
 // AuthHeaderEntry describes an auth-header middleware to generate at build time.
@@ -48,11 +57,20 @@ type gatewayRuntimeConfig struct {
 	DNSListen   string   `yaml:"dns_listen"`
 	MITMDomains []string `yaml:"mitm_domains"`
 	HealthAddr  string   `yaml:"health_addr,omitempty"`
+	PublicURL   string   `yaml:"public_url,omitempty"`
 }
 
 // BuildGatewayConfig merges user gateway config with plugin contributions.
 func BuildGatewayConfig(cfg *config.Config, contribs *plugin.Contributions) *GatewayConfigOutput {
-	out := &GatewayConfigOutput{}
+	publicURL := cfg.Gateway.PublicURL
+	// Default to localhost:8080 when no public_url configured (local dev)
+	if publicURL == "" {
+		publicURL = "http://localhost:8080"
+	}
+
+	out := &GatewayConfigOutput{
+		PublicURL: publicURL,
+	}
 
 	// User-declared services
 	for _, svc := range cfg.Gateway.Services {
@@ -120,6 +138,7 @@ func WriteGatewayRuntimeConfig(buildDir string, gwCfg *GatewayConfigOutput) erro
 	rc := gatewayRuntimeConfig{
 		Listen:    ":8443",
 		DNSListen: ":53",
+		PublicURL: gwCfg.PublicURL,
 	}
 
 	for _, svc := range gwCfg.Services {
