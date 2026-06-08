@@ -146,58 +146,16 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// FeatureEntry represents a single feature plugin entry in the features array.
-type FeatureEntry struct {
-	Plugin string         `yaml:"plugin" schema:"Plugin type name" required:"true"`
-	Name   string         `yaml:"name" schema:"Optional instance name for logging (defaults to features[i])"`
-	Config map[string]any `yaml:"-"` // remaining fields after plugin/name extraction
-}
-
-// UnmarshalYAML implements custom unmarshaling to separate plugin/name from config fields.
-func (f *FeatureEntry) UnmarshalYAML(value *yaml.Node) error {
-	// First decode into a map to get all fields
-	var raw map[string]any
-	if err := value.Decode(&raw); err != nil {
-		return err
-	}
-
-	// Extract plugin (required)
-	plugin, ok := raw["plugin"]
-	if !ok {
-		return fmt.Errorf("feature entry missing required 'plugin' field")
-	}
-	pluginStr, ok := plugin.(string)
-	if !ok {
-		return fmt.Errorf("feature entry 'plugin' must be a string")
-	}
-	f.Plugin = pluginStr
-	delete(raw, "plugin")
-
-	// Extract name (optional)
-	if name, ok := raw["name"]; ok {
-		nameStr, ok := name.(string)
-		if !ok {
-			return fmt.Errorf("feature entry 'name' must be a string")
-		}
-		f.Name = nameStr
-		delete(raw, "name")
-	}
-
-	// Remaining fields are the plugin config
-	f.Config = raw
-	return nil
-}
-
 // FleetConfig represents a fleet.yaml file for multi-agent deployments.
 type FleetConfig struct {
-	Agents []string    `yaml:"agents"`
-	Shared SharedBlock `yaml:"shared"`
+	Agents []string    `yaml:"agents" json:"agents" jsonschema:"required,title=agents,description=List of agent subdirectory names"`
+	Shared SharedBlock `yaml:"shared" json:"shared,omitempty" jsonschema:"title=shared,description=Configuration shared across all agents"`
 }
 
 // SharedBlock holds configuration shared across all agents in a fleet.
 type SharedBlock struct {
-	Installations []FeatureEntry `yaml:"installations"`
-	Gateway       GatewayConfig  `yaml:"gateway"`
+	Installations []Installation `yaml:"installations" json:"installations,omitempty" jsonschema:"title=installations,description=Plugins shared across all agents"`
+	Gateway       GatewayConfig  `yaml:"gateway" json:"gateway,omitempty" jsonschema:"title=gateway,description=Gateway services shared across all agents"`
 }
 
 // LoadFleet reads and parses a fleet.yaml file from the given directory.
@@ -255,9 +213,9 @@ func LoadFleetAgents(dir string) (*FleetConfig, []FleetAgent, error) {
 	return fleet, agents, nil
 }
 
-// MergeInstallations merges shared features with per-agent installations.
+// MergeInstallations merges shared installations with per-agent installations.
 // Per-agent wins when the same plugin name appears in both.
-func MergeInstallations(shared []FeatureEntry, perAgent []Installation) []Installation {
+func MergeInstallations(shared []Installation, perAgent []Installation) []Installation {
 	if len(shared) == 0 {
 		return perAgent
 	}
@@ -268,16 +226,13 @@ func MergeInstallations(shared []FeatureEntry, perAgent []Installation) []Instal
 		agentPlugins[inst.Plugin] = true
 	}
 
-	// Start with shared features that aren't overridden
+	// Start with shared installations that aren't overridden
 	var merged []Installation
-	for _, feat := range shared {
-		if agentPlugins[feat.Plugin] {
+	for _, inst := range shared {
+		if agentPlugins[inst.Plugin] {
 			continue // per-agent overrides
 		}
-		merged = append(merged, Installation{
-			Plugin:  feat.Plugin,
-			Options: feat.Config,
-		})
+		merged = append(merged, inst)
 	}
 
 	// Append all per-agent installations

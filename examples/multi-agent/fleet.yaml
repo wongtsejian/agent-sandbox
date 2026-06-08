@@ -13,4 +13,5 @@ shared:
           Authorization: Bearer ${STX_LLM_GATEWAY_API_KEY}
   installations:
     - plugin: "@builtin/github-pat"
-      token: "${GITHUB_PAT}"
+      options:
+        token: "${GITHUB_PAT}"

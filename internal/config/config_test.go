@@ -226,8 +226,8 @@ runtime:
 
 func TestMergeInstallations(t *testing.T) {
 	t.Run("shared only", func(t *testing.T) {
-		shared := []FeatureEntry{
-			{Plugin: "@builtin/github-pat", Config: map[string]any{"token": "${PAT}"}},
+		shared := []Installation{
+			{Plugin: "@builtin/github-pat", Options: map[string]any{"token": "${PAT}"}},
 		}
 		result := MergeInstallations(shared, nil)
 		require.Len(t, result, 1)
@@ -245,9 +245,9 @@ func TestMergeInstallations(t *testing.T) {
 	})
 
 	t.Run("per-agent overrides shared same plugin", func(t *testing.T) {
-		shared := []FeatureEntry{
-			{Plugin: "@builtin/github-pat", Config: map[string]any{"token": "shared-token"}},
-			{Plugin: "@builtin/mcp-oauth", Config: map[string]any{"provider": "notion"}},
+		shared := []Installation{
+			{Plugin: "@builtin/github-pat", Options: map[string]any{"token": "shared-token"}},
+			{Plugin: "@builtin/mcp-oauth", Options: map[string]any{"provider": "notion"}},
 		}
 		perAgent := []Installation{
 			{Plugin: "@builtin/github-pat", Options: map[string]any{"token": "agent-token"}},
@@ -265,8 +265,8 @@ func TestMergeInstallations(t *testing.T) {
 	})
 
 	t.Run("different plugins merge additively", func(t *testing.T) {
-		shared := []FeatureEntry{
-			{Plugin: "@builtin/github-pat", Config: map[string]any{"token": "${PAT}"}},
+		shared := []Installation{
+			{Plugin: "@builtin/github-pat", Options: map[string]any{"token": "${PAT}"}},
 		}
 		perAgent := []Installation{
 			{Plugin: "@builtin/telegram", Options: map[string]any{"bot": "abc"}},
@@ -291,7 +291,8 @@ agents:
 shared:
   installations:
     - plugin: "@builtin/github-pat"
-      token: "${GITHUB_PAT}"
+      options:
+        token: "${GITHUB_PAT}"
 `
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "fleet.yaml"), []byte(fleetYAML), 0644))
 
