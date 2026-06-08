@@ -58,7 +58,8 @@ func Fetch(version string) (string, error) {
 
 // FetchLatest queries GitHub for the latest core-v* release, downloads it, and returns
 // the cache directory. Results are cached for LatestCacheTTL to avoid hitting the API
-// on every generate.
+// on every generate. Old cached versions are automatically cleaned up when a new version
+// is fetched.
 func FetchLatest() (string, error) {
 	version, err := cachedLatestVersion()
 	if err == nil && version != "" {
@@ -68,13 +69,25 @@ func FetchLatest() (string, error) {
 		}
 	}
 
+	previousVersion := version
 	version, err = resolveLatestVersion()
 	if err != nil {
 		return "", fmt.Errorf("resolve latest core version: %w", err)
 	}
 
 	_ = saveLatestResolution(version)
-	return Fetch(version)
+
+	dir, err := Fetch(version)
+	if err != nil {
+		return "", err
+	}
+
+	// Clean up old cached versions when a new one is fetched.
+	if previousVersion != "" && previousVersion != version {
+		cleanOldVersions(version)
+	}
+
+	return dir, nil
 }
 
 // resolveLatestVersion queries GitHub Releases API for the latest core-v* tag.
@@ -171,6 +184,27 @@ func cacheBase() string {
 			return filepath.Join(xdg, "agent-sandbox", "core")
 		}
 		return filepath.Join(home, ".cache", "agent-sandbox", "core")
+	}
+}
+
+// cleanOldVersions removes all cached version directories except the current one.
+func cleanOldVersions(currentVersion string) {
+	base := cacheBase()
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if entry.Name() == currentVersion {
+			continue
+		}
+		// Only remove directories that look like version dirs (have .complete sentinel).
+		if IsCachedAt(filepath.Join(base, entry.Name())) {
+			_ = os.RemoveAll(filepath.Join(base, entry.Name()))
+		}
 	}
 }
 
