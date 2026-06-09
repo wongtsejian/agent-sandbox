@@ -8,6 +8,52 @@ Provides full OAuth lifecycle for MCP (Model Context Protocol) providers: automa
 2. **Callback handler** at `/plugins/mcp-oauth/callback` receives the OAuth authorization code, exchanges it for tokens, and writes the token file to the shared volume.
 3. **Shared volume** (`oauth-tokens`) is mounted into both gateway and agent containers so the MCP client can read tokens written by the gateway.
 
+## Login Flow (Recommended)
+
+The login endpoint handles the full OAuth lifecycle including PKCE and Dynamic Client Registration.
+
+### Quick Start
+
+```bash
+# 1. Start your agent-sandbox environment
+agent-sandbox -C <project-dir> compose up --build
+
+# 2. Discover the gateway URL (port is dynamically assigned)
+agent-sandbox -C <project-dir> gateway-url
+# http://localhost:49321
+
+# 3. Initiate login for a provider
+curl $(agent-sandbox -C <project-dir> gateway-url)/plugins/mcp-oauth/login/<provider>
+
+# Response:
+# {"authorize_url":"https://...","provider":"<provider>","instructions":"Open the authorize_url in your browser to complete login."}
+
+# 4. Open the authorize_url in your browser and complete authorization
+#    The browser will redirect back to the gateway and show "Authorization successful"
+
+# 5. Done — the agent can now use the MCP provider transparently
+```
+
+> **Note:** The gateway port is dynamically assigned to avoid conflicts when running
+> multiple agent-sandbox instances on the same host. Use `agent-sandbox gateway-url`
+> to discover the current port. If you need a fixed port, set `gateway.public_url`
+> in your `agent.yaml`.
+
+### How It Works
+
+1. `GET /plugins/mcp-oauth/login/{provider}` — Gateway performs Dynamic Client Registration (if needed), generates PKCE challenge, and returns an authorize URL
+2. User opens the URL in their browser and authorizes
+3. Provider redirects to the gateway's `/plugins/mcp-oauth/callback` with an authorization code
+4. Gateway exchanges the code (with PKCE code_verifier) for tokens and stores them
+5. All subsequent agent requests to the provider domain get `Authorization: Bearer <token>` injected automatically
+
+### Listing Providers
+
+```bash
+curl $(agent-sandbox -C <project-dir> gateway-url)/plugins/mcp-oauth/login/
+# {"available":["notion"],"error":"provider name required","usage":"GET /plugins/mcp-oauth/login/<provider_name>"}
+```
+
 ## Usage
 
 ```yaml

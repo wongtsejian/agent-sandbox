@@ -140,7 +140,7 @@ func buildAgentPair(p agentPairParams) agentPairResult {
 
 	// Expose gateway HTTP port when plugin routes are registered (e.g. OAuth callbacks)
 	if p.exposeGateway && contribs != nil && len(contribs.Gateway.Routes) > 0 {
-		gatewaySvc["ports"] = []string{"8080:8080"}
+		gatewaySvc["ports"] = []string{"8080"}
 	}
 	if len(gatewayEnv) > 0 {
 		gatewaySvc["environment"] = gatewayEnv
