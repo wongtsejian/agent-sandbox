@@ -55,7 +55,7 @@ jobs:
           # Start gateway in background, wait for health endpoint
           GATEWAY_CONFIG=/tmp/smoke-test/config.yaml \
           GATEWAY_PLUGINS_CONFIG=/tmp/smoke-test/plugins.yaml \
-          ./gateway-linux-amd64 &
+          ./gateway-bin/gateway-linux-amd64 &
           GW_PID=$!
 
           # Wait up to 5 seconds for health
