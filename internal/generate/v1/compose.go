@@ -56,7 +56,11 @@ func buildAgentPair(p agentPairParams) agentPairResult {
 	agentVolumes := []string{p.certsVolume + ":/shared/certs"}
 	agentVolumes = append(agentVolumes, cfg.Runtime.Volumes...)
 	if contribs != nil {
-		agentVolumes = append(agentVolumes, contribs.Runtime.Volumes...)
+		for _, v := range contribs.Runtime.Volumes {
+			if v != "" {
+				agentVolumes = append(agentVolumes, v)
+			}
+		}
 	}
 
 	// Build cap_add from base set plus plugin contributions.

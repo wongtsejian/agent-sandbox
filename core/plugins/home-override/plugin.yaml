@@ -16,6 +16,6 @@ contributes:
       - "COPY {{ .plugin.options.home_directory }} /opt/home-seed/"
       - "RUN chown -R agent:agent /opt/home-seed"
     pre_entrypoint:
-      - 'cp -a /opt/home-seed/. "$AGENT_HOME/"'
+      - 'chmod 755 "$AGENT_HOME" 2>/dev/null || true; if [ ! -f "$AGENT_HOME/.home-seeded" ]; then cp -a /opt/home-seed/. "$AGENT_HOME/" && touch "$AGENT_HOME/.home-seeded"; fi'
     volumes:
-      - "{{ if .plugin.options.volume }}{{ .agent.name }}-home:/home/agent{{ else }}{{ .plugin.options.home_directory }}:/home/agent{{ end }}"
+      - "{{ if .plugin.options.volume }}{{ .agent.name }}-home:/home/agent{{ end }}"
