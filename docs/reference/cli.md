@@ -146,11 +146,10 @@ agent-sandbox compose down -v
 
 ## Local Development
 
-When run from the agent-sandbox source repo, the shim auto-detects and builds from source:
+Use `--dev` to build from source and run from the repo root:
 
 ```bash
-# No flags needed — auto-detected by presence of cmd/agent-sandbox-core/main.go
-agent-sandbox -C examples/local-coding generate
+agent-sandbox --dev -C examples/local-coding generate
 # [dev] Building from source...
 # Generated .build/ in .../examples/local-coding
 ```

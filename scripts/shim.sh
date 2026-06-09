@@ -47,10 +47,11 @@ ARCH=$(uname -m)
 case "$ARCH" in x86_64) ARCH="amd64" ;; aarch64) ARCH="arm64" ;; esac
 PLATFORM="${OS}-${ARCH}"
 
-# --- Parse args: extract -C value and subcommand in one pass ---
+# --- Parse args: extract -C value, --dev flag, and subcommand in one pass ---
 
 PROJECT_DIR="."
 CMD=""
+DEV_MODE=""
 _grab_next=""
 for _arg in "$@"; do
   if [ -n "$_grab_next" ]; then
@@ -58,6 +59,7 @@ for _arg in "$@"; do
   fi
   case "$_arg" in
     -C|--dir) _grab_next=1 ;;
+    --dev) DEV_MODE=1 ;;
     -*) ;;
     *) [ -z "$CMD" ] && CMD="$_arg" ;;
   esac
@@ -80,9 +82,10 @@ case "$CMD" in
     exit 0 ;;
 esac
 
-# --- Dev mode: auto-detect source repo and build from source ---
+# --- Dev mode: build from source when --dev flag is passed ---
 
-if [ -f "cmd/agent-sandbox-core/main.go" ]; then
+if [ -n "$DEV_MODE" ]; then
+  [ -f "cmd/agent-sandbox-core/main.go" ] || die "--dev requires running from the agent-sandbox source repo"
   DEV_BIN="./core/agent-sandbox-core"
   printf '[dev] Building from source...\n' >&2
   if command -v go >/dev/null 2>&1; then
@@ -92,7 +95,12 @@ if [ -f "cmd/agent-sandbox-core/main.go" ]; then
   else
     die "Dev mode requires 'go' or 'flox' on PATH"
   fi
-  exec "$DEV_BIN" "$@"
+  # Strip --dev from args before exec
+  _args=""
+  for _arg in "$@"; do
+    [ "$_arg" = "--dev" ] || _args="$_args \"$_arg\""
+  done
+  eval exec "$DEV_BIN" $_args
 fi
 
 # --- Resolve core version ---

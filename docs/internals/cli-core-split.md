@@ -77,15 +77,14 @@ Multiple core versions coexist. Different projects can pin different versions wi
 
 ## Local Development
 
-The shim auto-detects when you're in the source repo. If `cmd/agent-sandbox-core/main.go` exists in the current directory, it builds from source and execs the local binary — no flags needed:
+Use `--dev` to build and run from source:
 
 ```bash
-# From the repo root — shim builds and runs automatically
-agent-sandbox -C examples/local-coding generate
+agent-sandbox --dev -C examples/local-coding generate
 # [dev] Building from source...
 # Generated .build/ in .../examples/local-coding
 ```
 
 The binary is placed at `./core/agent-sandbox-core` so it resolves sibling assets (plugins, presets, templates) from the `core/` directory.
 
-Requires `go` or `flox` on PATH. If neither is available, the shim errors with a clear message.
+Requires `go` or `flox` on PATH. Must be run from the source repo root.
