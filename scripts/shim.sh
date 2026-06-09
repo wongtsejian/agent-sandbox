@@ -52,8 +52,29 @@ ensure_cached() {
 
 platform_detect
 
-# Parse -C / --dir flag to find project directory (without modifying $@)
+# Parse -C / --dir flag to find project directory and detect subcommand
 PROJECT_DIR="."
+_CMD=""
+_skip_next=""
+for _arg in "$@"; do
+  if [ -n "$_skip_next" ]; then
+    _skip_next=""
+    continue
+  fi
+  case "$_arg" in
+    -C|--dir)
+      _skip_next=1
+      ;;
+    -*)
+      ;;
+    *)
+      if [ -z "$_CMD" ]; then
+        _CMD="$_arg"
+      fi
+      ;;
+  esac
+done
+# Second pass to get the -C value
 _prev=""
 for _arg in "$@"; do
   if [ "$_prev" = "-C" ] || [ "$_prev" = "--dir" ]; then
@@ -63,7 +84,7 @@ for _arg in "$@"; do
   _prev="$_arg"
 done
 
-case "${1:-}" in
+case "$_CMD" in
   upgrade)
     curl -fsSL "https://raw.githubusercontent.com/$GITHUB_REPO/main/scripts/install.sh" | sh
     exit $?
@@ -91,7 +112,7 @@ if [ -f "$PROJECT_DIR/agent.yaml" ]; then
     [ -n "$VER" ] || die "Could not resolve latest core version (GitHub API rate limit?)"
   fi
 else
-  if [ "${1:-}" = "init" ]; then
+  if [ "$_CMD" = "init" ]; then
     VER=$(resolve_latest)
     [ -n "$VER" ] || die "Could not resolve latest core version (GitHub API rate limit?)"
   else
