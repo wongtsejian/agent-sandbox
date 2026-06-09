@@ -80,6 +80,21 @@ case "$CMD" in
     exit 0 ;;
 esac
 
+# --- Dev mode: auto-detect source repo and build from source ---
+
+if [ -f "cmd/agent-sandbox-core/main.go" ]; then
+  DEV_BIN="./core/agent-sandbox-core"
+  printf '[dev] Building from source...\n' >&2
+  if command -v go >/dev/null 2>&1; then
+    go build -o "$DEV_BIN" ./cmd/agent-sandbox-core/ || die "Dev build failed"
+  elif command -v flox >/dev/null 2>&1; then
+    flox activate -- go build -o "$DEV_BIN" ./cmd/agent-sandbox-core/ || die "Dev build failed"
+  else
+    die "Dev mode requires 'go' or 'flox' on PATH"
+  fi
+  exec "$DEV_BIN" "$@"
+fi
+
 # --- Resolve core version ---
 
 if [ -f "$PROJECT_DIR/agent.yaml" ]; then
