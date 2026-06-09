@@ -6,7 +6,7 @@ New repo (`donbader/agent-sandbox`). agent-fleet stays in maintenance mode (secu
 
 **Principle:** Every phase produces a working `agent-sandbox generate && agent-sandbox compose up --build`. Each phase adds capabilities, never breaks what's already working.
 
-**Key design:** Plugins are data-driven. Runtime plugins are pure YAML. Feature plugins are YAML + optional code (Go gateway handlers compiled during Docker build, TypeScript channel plugins). CLI is a generic template engine — plugin updates never require CLI upgrades.
+**Key design:** Plugins are data-driven. Runtime presets are pure YAML. Feature plugins are YAML + TypeScript loaded at gateway runtime. The gateway ships as a pre-built binary — no per-project Go compilation. CLI is a generic template engine — plugin updates never require CLI upgrades.
 
 ## Phases
 
@@ -60,7 +60,7 @@ runtime: codex
 
 ---
 
-### Phase 2: custom-runtime Feature
+### Phase 2: custom-runtime Feature ✅
 
 **What works after this phase:**
 ```bash
@@ -114,6 +114,9 @@ agent-sandbox generate && agent-sandbox compose up --build
 - [x] Structured logging (slog for Go, pino for TypeScript)
 - [x] Handler registry (config-driven — rewriter types instantiated from gateway-config.yaml)
 - [x] Integration test (verify traffic routes through gateway)
+- [x] TypeScript plugin runtime — gateway loads .ts plugins at startup
+- [x] All feature plugins migrated to TypeScript (no per-project Go compilation)
+- [x] Gateway ships as pre-built binary (fetched from GitHub Releases)
 
 ---
 
@@ -141,11 +144,11 @@ agent-sandbox generate && agent-sandbox compose up --build
 - [x] Extension system (BridgeExtension, ExtensionRegistry)
 - [x] Core commands (/new, /stop, /resume, /label, /version, /sh, /diagnose)
 - [x] claude-code + pi runtime plugins
-- [x] github-pat + static-header gateway plugins
+- [x] github-pat + static-header gateway plugins (TypeScript)
 
 ---
 
-### Phase 5: CLI Polish + Multi-Agent
+### Phase 5: CLI Polish + Multi-Agent ✅
 
 **What works after this phase:**
 ```bash
@@ -172,11 +175,11 @@ agent-sandbox generate && agent-sandbox compose up --build
 # → Full-featured agent: Docker API proxy, mcp-oauth, streaming
 ```
 
-- [x] `plugins/mcp-oauth/feature.yaml` + `gateway/handler.go`
+- [x] `plugins/mcp-oauth/` — TypeScript OAuth middleware + route handlers
 - [x] Streaming reply (edit Telegram message as agent streams)
 - [x] Agent-provided commands (declared via ACP initialize response)
 - [x] Telegram `setMyCommands` registration (bot menu)
-- [ ] `plugins/docker/feature.yaml` + `gateway/handler.go` + compose sidecar
+- [ ] `plugins/docker/` — Docker API proxy + compose sidecar
 - [ ] Context buffer (multi-message batching before sending to agent)
 - [ ] Security hardening (cap_drop, no-new-privileges, hidepid, file permissions)
 
@@ -188,6 +191,22 @@ agent-sandbox generate && agent-sandbox compose up --build
 - [x] README with quickstart (update)
 
 **Note:** GoReleaser release pipeline and install.sh were added in Phase 1. Migration guide dropped (no agent-fleet users).
+
+---
+
+## TypeScript Runtime Migration ✅
+
+The gateway plugin system has been fully migrated to TypeScript:
+
+- **Phase 1:** TypeScript plugin loader added to gateway — `.ts` files loaded at startup
+- **Phase 2:** All existing feature plugins (github-pat, mcp-oauth, static-header) rewritten in TypeScript
+- **Phase 3:** Per-project Go compilation removed — gateway ships as a pre-built binary, plugins are TypeScript loaded at runtime
+
+This means:
+- Plugin updates never require recompiling the gateway
+- No Go toolchain needed in the Docker build
+- Faster `agent-sandbox generate` (no compilation step)
+- Plugins are simpler to write and test
 
 ---
 
@@ -207,11 +226,11 @@ agent-sandbox generate && agent-sandbox compose up --build
 
 - `runtimes/*/render.sh` — replaced by runtime.yaml + template engine
 - `pkg/provider/resolver.go` — plugins fetched from GitHub Releases or local override
-- `images/gateway/` — gateway source packaged by core-release.yml, fetched by CLI, compiled during Docker build
+- `images/gateway/` — gateway ships as pre-built binary (no per-project compilation)
 - `agent-fleet tools ctx` — no render scripts to support
 - Template injection / user_base — replaced by custom-runtime feature
 - Default-deny egress model — replaced by allow-all + MITM where needed
-- Compile-time plugin Go interfaces — replaced by data-driven YAML
+- Compile-time plugin Go interfaces — replaced by TypeScript plugins loaded at runtime
 
 ## agent-fleet Disposition
 

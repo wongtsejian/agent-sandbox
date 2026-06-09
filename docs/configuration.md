@@ -56,8 +56,10 @@ gateway:
       network: string     # optional — compose network to attach
       headers:            # optional — injected on every proxied request
         Authorization: Bearer ${ENV_VAR}
-      middlewares:        # optional — custom Go middleware
-        - custom: ./path/to/middleware.go
+      middlewares:        # optional — TypeScript middleware scripts
+        - script: ./path/to/middleware.ts
+          domains:        # optional — list of domains this middleware applies to
+            - "api.example.com"
 
 installations:            # optional — plugins to install
   - plugin: "@builtin/github-pat"
@@ -75,7 +77,7 @@ OPENAI_API_KEY=sk-xxxx
 GITHUB_PAT=ghp_xxxx
 ```
 
-Secrets are resolved at generate time and baked into the gateway binary. They never enter the agent container's environment. The `audit` command verifies this.
+Secrets are resolved at generate time and passed to the gateway at runtime via options. They never enter the agent container's environment. The `audit` command verifies this.
 
 ## Container Runtime
 
@@ -138,6 +140,46 @@ Plugin references:
 
 See [Plugins](plugins.md) for the full catalog.
 
+## plugin.yaml Schema
+
+Each plugin is defined by a `plugin.yaml` file:
+
+```yaml
+name: my-plugin
+description: What this plugin does
+
+middlewares:
+  - script: src/my-middleware.ts    # TypeScript middleware loaded at gateway runtime
+    domains:                         # domains this middleware intercepts
+      - "api.example.com"
+      - "*.example.com"
+
+routes:
+  - path: /plugins/my-plugin/hook
+    handler: src/hook-handler.ts    # TypeScript route handler
+    method: POST                    # HTTP method (GET, POST, etc.)
+
+runtime:
+  env:
+    MY_VAR: "value"                 # environment variables set in agent container
+
+volumes:
+  - name: my-data
+    mount: /data/my-plugin
+```
+
+### Key Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `middlewares[].script` | string | Path to TypeScript middleware file (relative to plugin dir) |
+| `middlewares[].domains` | list | Domains this middleware applies to |
+| `routes[].path` | string | HTTP path the route handles |
+| `routes[].handler` | string | Path to TypeScript handler file (relative to plugin dir) |
+| `routes[].method` | string | HTTP method to match |
+| `runtime.env` | map | Environment variables injected into the agent container |
+| `volumes` | list | Shared volumes between gateway and agent |
+
 ## Fleet Mode (Multi-Agent)
 
 For multiple agents, use `fleet.yaml` instead of `agent.yaml`:
@@ -177,7 +219,7 @@ my-fleet/
 **Merge rules:**
 - `shared.gateway.services` merges into each agent (same URL → per-agent wins)
 - `shared.installations` merges into each agent (same plugin → per-agent wins)
-- Each agent gets its own gateway container with independently compiled middleware
+- Each agent gets its own gateway container with independently loaded middleware
 
 See [Fleet Mode Guide](guides/fleet-mode.md) for a complete walkthrough.
 
@@ -191,6 +233,6 @@ my-agent/
   .build/             ← generated artifacts (gitignored)
     Dockerfile
     docker-compose.yml
-    gateway-src/
+    gateway-config/
     schema.json
 ```

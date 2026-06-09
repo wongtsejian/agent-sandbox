@@ -67,7 +67,7 @@ agent-sandbox compose up --build       # docker compose passthrough
 
 ## Plugin Architecture (Data-Driven)
 
-**Key principle:** Plugin updates never require CLI upgrades. CLI is a generic template engine.
+**Key principle:** Plugin updates never require CLI upgrades. Plugins are TypeScript loaded at gateway runtime.
 
 ### Runtime Presets (Pure Data — fetched from Releases)
 
@@ -77,15 +77,16 @@ core/presets/<name>/runtime.yaml     ← base image, install commands, CMD, port
 
 No Go code. CLI reads YAML and generates Dockerfile. Presets are fetched from GitHub Releases on first `generate` (cached locally).
 
-### Feature Plugins (Pure Data)
+### Feature Plugins (TypeScript)
 
 Feature plugins live in `core/plugins/<name>/` and are fetched from GitHub Releases:
 
 ```
 core/plugins/<name>/plugin.yaml    ← metadata, gateway hosts, rewriter config
+core/plugins/<name>/src/*.ts       ← TypeScript middleware loaded at gateway runtime
 ```
 
-Plugins declare gateway rewriter rules (MITM domains, header injection) that are merged into `config.yaml` at generate time.
+Plugins declare gateway rewriter rules (MITM domains, header injection) via `plugin.yaml` and implement request/response modification logic in TypeScript. The gateway loads and executes plugin TS at startup — no compilation step required.
 
 ## Testing Guidelines
 
@@ -133,8 +134,8 @@ Refer to docs/roadmap.md for the phased implementation plan.
 - Every phase produces a working `agent-sandbox generate && agent-sandbox compose up --build`
 - Plugin updates never require CLI upgrades
 - Runtime presets are pure data (YAML) — no Go code
-- Feature plugins declare gateway rewriter rules (YAML) — compiled into gateway at Docker build
-- Gateway binary compiles during Docker build, not CLI build
+- Feature plugins are TypeScript loaded at gateway runtime — no recompilation needed
+- Gateway ships as a pre-built binary. Plugins are TypeScript loaded at runtime.
 - Transparent proxy via iptables DNAT — agent doesn't know it's proxied
 - Ephemeral by default — containers start fresh every restart
 - All credentials through gateway — real creds never in container env

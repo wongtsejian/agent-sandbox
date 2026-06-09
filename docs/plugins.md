@@ -1,168 +1,254 @@
-# Plugins
+# Plugin Authoring
 
-Available plugins that extend agent-sandbox. All builtin plugins use the `@builtin/` prefix.
+Plugins are TypeScript + YAML. No compilation step — scripts are loaded by the gateway at runtime.
 
-## Runtime Presets
+## Plugin Structure
 
-Runtime presets define the agent's base image, packages, and default command. Selected via `runtime.image`:
-
-```yaml
-runtime:
-  image: "@builtin/codex"
+```
+my-plugin/
+  plugin.yaml          # metadata, options, contributions
+  src/
+    middleware.ts      # middleware handler(s)
+    route-handler.ts   # route handler(s)
 ```
 
-| Preset | Base Image | Agent | Use Case |
-|--------|-----------|-------|----------|
-| `@builtin/codex` | node:24-slim | OpenAI Codex | AI coding with OpenAI models |
-| `@builtin/claude-code` | node:24-slim | Anthropic Claude Code | AI coding with Claude models |
-| `@builtin/pi` | node:24-slim | Pi Coding Agent | Pi-based coding |
-
-For custom runtimes not shipped with the CLI:
+## plugin.yaml Schema
 
 ```yaml
-runtime:
-  image: python:3.12-slim
-  extra_builds:
-    - "RUN pip install my-agent-cli"
-  entrypoint: ["my-agent-cli", "--headless"]
+name: my-plugin
+
+options:
+  token:
+    type: string          # string | object | boolean | integer
+    required: true
+    description: "Description shown in docs"
+  data_dir:
+    type: string
+    required: false
+    default: "/data/my-plugin"
+
+contributes:
+  gateway:
+    services:                      # domains the gateway should proxy
+      - url: "https://api.example.com"
+    volumes:                       # named volumes shared with the container
+      - "my-data:{{ .plugin.options.data_dir }}"
+    middlewares:                    # intercept proxied requests
+      - script: "./src/auth.ts"
+        domains: ["api.example.com"]   # optional domain filter
+    routes:                        # expose HTTP endpoints on the gateway
+      - path: "/callback"
+        handler: "./src/callback.ts"
+
+  runtime:
+    extra_builds:                   # injected into the agent Dockerfile
+      - "ENV MY_TOKEN=dummy"
 ```
 
-## Feature Plugins
-
-### @builtin/github-pat
-
-Injects a GitHub PAT into all requests to `github.com` and `api.github.com` via the gateway.
+**Template expressions** — YAML values support Go templates with access to `.plugin.options.*`. Useful for dynamic service lists:
 
 ```yaml
+services:
+{{- range $name, $cfg := .plugin.options.providers }}
+  - url: "{{ index $cfg "mcp_url" }}"
+{{- end }}
+```
+
+## Writing a Middleware Handler
+
+A middleware intercepts proxied requests before they reach the upstream service.
+
+```typescript
+// src/github-auth.ts
+export default function(ctx: any, options: any) {
+  const token = options.token;
+  if (!token) return;
+
+  const basic = gw.crypto.base64.encode("x-access-token:" + token);
+  ctx.request.setHeader("Authorization", "Basic " + basic);
+  gw.secrets.register(token);
+}
+```
+
+**Signature:** `export default function(ctx, options) { ... }`
+
+- `ctx` — the request context (see Host APIs below)
+- `options` — resolved plugin options from `agent.yaml`
+
+**Behavior:**
+- Return normally → request continues to upstream
+- Call `ctx.abort(status, body)` → request is terminated with the given response
+
+If `domains` is set in `plugin.yaml`, the handler only fires for requests matching those hosts. Otherwise it fires for all proxied requests.
+
+## Writing a Route Handler
+
+Routes expose HTTP endpoints directly on the gateway (e.g. OAuth callbacks).
+
+```typescript
+// src/callback.ts
+export default function(ctx: any, options: any) {
+  const query = ctx.request.query || "";
+  const params = new URLSearchParams(query);
+  const code = params.get("code");
+
+  if (!code) {
+    ctx.response.status(400);
+    ctx.response.body("missing code parameter");
+    return;
+  }
+
+  // Exchange code for token...
+  ctx.response.status(200);
+  ctx.response.header("Content-Type", "text/html; charset=utf-8");
+  ctx.response.body("<h1>Success</h1>");
+}
+```
+
+Route handlers use `ctx.response.*` to build the response. The path in `plugin.yaml` is mounted under `/plugins/<plugin-name>/`.
+
+## Host APIs
+
+The `gw` global and `ctx` object are injected by the gateway runtime.
+
+### ctx.request
+
+| Property/Method | Description |
+|----------------|-------------|
+| `ctx.request.method` | HTTP method (GET, POST, etc.) |
+| `ctx.request.url` | Full request URL |
+| `ctx.request.host` | Request hostname |
+| `ctx.request.path` | URL path |
+| `ctx.request.query` | Raw query string |
+| `ctx.request.headers` | Header map (lowercase keys) |
+| `ctx.request.setHeader(name, value)` | Set/overwrite a request header |
+
+### ctx.abort(status, body)
+
+Terminates the request immediately with the given HTTP status and body. Use in middlewares to block requests (e.g. return 401 when no token exists).
+
+```typescript
+ctx.abort(401, JSON.stringify({ error: "oauth_required", authorize_url: url }));
+```
+
+### ctx.response (route handlers only)
+
+| Method | Description |
+|--------|-------------|
+| `ctx.response.status(code)` | Set HTTP status code |
+| `ctx.response.header(name, value)` | Set response header |
+| `ctx.response.body(content)` | Set response body (string) |
+
+### ctx.env(key)
+
+Read an environment variable from the gateway process.
+
+### gw.crypto
+
+| Method | Description |
+|--------|-------------|
+| `gw.crypto.sha256(data, encoding?)` | SHA-256 hash. Returns hex by default. |
+| `gw.crypto.hmac(key, data)` | HMAC-SHA256. Returns hex. |
+| `gw.crypto.randomBytes(n)` | Cryptographically random bytes (hex string). |
+| `gw.crypto.base64.encode(data)` | Base64 encode |
+| `gw.crypto.base64.decode(data)` | Base64 decode |
+| `gw.crypto.base64url.encode(data)` | Base64url encode (no padding) |
+| `gw.crypto.base64url.decode(data)` | Base64url decode |
+
+### gw.fs
+
+File I/O scoped to the plugin's data directory (the volume mount path).
+
+| Method | Description |
+|--------|-------------|
+| `gw.fs.read(path)` | Read file contents as string |
+| `gw.fs.write(path, data)` | Write string to file |
+
+```typescript
+const token = JSON.parse(gw.fs.read("provider.json"));
+gw.fs.write("provider.json", JSON.stringify(token, null, 2));
+```
+
+### gw.http
+
+| Method | Description |
+|--------|-------------|
+| `gw.http.fetch(url, opts)` | Synchronous HTTP request |
+
+`opts`: `{ method: string, body?: string, headers?: Record<string, string> }`
+
+Returns: `{ status: number, headers: Record<string, string>, body: string }`
+
+```typescript
+const resp = gw.http.fetch("https://oauth.example.com/token", {
+  method: "POST",
+  body: "grant_type=authorization_code&code=" + code,
+  headers: { "Content-Type": "application/x-www-form-urlencoded" },
+});
+if (resp.status !== 200) throw new Error("token exchange failed");
+const token = JSON.parse(resp.body);
+```
+
+### gw.secrets
+
+| Method | Description |
+|--------|-------------|
+| `gw.secrets.register(value)` | Register a value for scrubbing from logs/responses |
+
+Call this for any credential you inject so it never leaks in gateway logs.
+
+### gw.log
+
+| Method | Description |
+|--------|-------------|
+| `gw.log.info(msg)` | Info-level log |
+| `gw.log.error(msg)` | Error-level log |
+| `gw.log.debug(msg)` | Debug-level log |
+
+## Options
+
+Options declared in `plugin.yaml` are resolved from the user's `agent.yaml`:
+
+```yaml
+# agent.yaml
 installations:
   - plugin: "@builtin/github-pat"
     options:
       token: "${GITHUB_PAT}"
 ```
 
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `token` | string | yes | GitHub PAT. Use `${ENV_VAR}` to reference `.env` |
+**Env var expansion** — String values support `${ENV_VAR}` syntax. The CLI resolves these from the project `.env` file or shell environment before passing to the plugin.
 
-The gateway adds HTTP Basic auth to all GitHub HTTPS requests. Git CLI, `gh`, and any HTTPS-based GitHub access is authenticated without the token entering the agent environment.
+Option types: `string`, `object`, `boolean`, `integer`. The `required` and `default` fields control validation.
 
----
+## Development Workflow
 
-### @builtin/home-override
+Use `--core=./core` to point the CLI at your local core directory during development:
 
-Mounts a local directory into the agent container as `/home/agent/`.
-
-```yaml
-installations:
-  - plugin: "@builtin/home-override"
-    options:
-      home_directory: "./home"
-      volume: true
+```bash
+agent-sandbox generate --core=./core
 ```
 
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `home_directory` | string | yes | — | Local directory (relative to project root) |
-| `volume` | boolean | no | `false` | Persist home across restarts via named Docker volume |
+This bypasses the GitHub Releases fetch and uses plugins directly from `core/plugins/`. Edit TypeScript, re-run `generate`, and `compose up --build` to test changes.
 
-**Without volume:** Bind-mounts the directory directly. Host and container share changes.
-**With volume:** Contents seeded into a named volume on first run. Survives container restarts.
+## Examples
 
----
+### github-pat (simple middleware)
 
-### @builtin/ssh
+Injects GitHub PAT as HTTP Basic auth on all requests to `github.com` and `api.github.com`.
 
-SSH server inside the agent container for remote development access.
+- [`core/plugins/github-pat/plugin.yaml`](../core/plugins/github-pat/plugin.yaml)
+- [`core/plugins/github-pat/src/github-auth.ts`](../core/plugins/github-pat/src/github-auth.ts)
 
-```yaml
-installations:
-  - plugin: "@builtin/ssh"
-    options:
-      port: 2222
-      authorized_keys: "./ssh_key.pub"
-```
+Key patterns: single middleware with domain filter, `gw.crypto.base64.encode`, `gw.secrets.register`.
 
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `port` | integer | no | `2222` | SSH port exposed on the host |
-| `authorized_keys` | string | yes | — | Path to public key file (relative to project root) |
+### mcp-oauth (complex multi-handler)
 
-Key-only auth. No passwords. Connect with `ssh -p 2222 agent@localhost`.
+Full OAuth lifecycle: token injection middleware, login route (PKCE), callback route (code exchange), dynamic client registration, token refresh.
 
----
+- [`core/plugins/mcp-oauth/plugin.yaml`](../core/plugins/mcp-oauth/plugin.yaml)
+- [`core/plugins/mcp-oauth/src/oauth.ts`](../core/plugins/mcp-oauth/src/oauth.ts) — middleware
+- [`core/plugins/mcp-oauth/src/login.ts`](../core/plugins/mcp-oauth/src/login.ts) — login route
+- [`core/plugins/mcp-oauth/src/callback.ts`](../core/plugins/mcp-oauth/src/callback.ts) — callback route
 
-### @builtin/mcp-oauth
-
-Full OAuth lifecycle for MCP providers: token injection, automatic refresh, and browser-based authorization via gateway callback.
-
-```yaml
-gateway:
-  public_url: "https://gateway.myagent.example.com"
-  services:
-    - url: https://mcp.notion.com
-
-installations:
-  - plugin: "@builtin/mcp-oauth"
-    options:
-      providers:
-        notion:
-          mcp_url: https://mcp.notion.com/mcp
-          authorize_endpoint: https://api.notion.com/v1/oauth/authorize
-          token_endpoint: https://api.notion.com/v1/oauth/token
-          client_id: "your-client-id"
-          client_secret: "your-client-secret"
-          scopes: "read_content"
-      token_dir: "/data/oauth-tokens"
-```
-
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `providers` | object | yes | — | Map of provider name to OAuth config |
-| `token_dir` | string | no | `/data/oauth-tokens` | Directory for OAuth token files |
-
-**Flow:** When no token exists, the middleware returns 401 with an `authorize_url`. The user visits the URL, authorizes, and the OAuth provider redirects to `/plugins/mcp-oauth/callback` on the gateway. The callback handler exchanges the code for tokens and writes them to the shared volume. Subsequent requests are automatically authenticated.
-
-**Contributes:** gateway middleware (token injection + 401), gateway route (`/plugins/mcp-oauth/callback`), shared volume.
-
----
-
-### @builtin/agent-manager-acp
-
-ACP proxy that spawns an agent process and exposes it over HTTP/WebSocket for channel adapters.
-
-```yaml
-installations:
-  - plugin: "@builtin/agent-manager-acp"
-    options:
-      acp_command: ["codex-acp"]
-      port: "3100"
-```
-
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `acp_command` | array | yes | — | Command to spawn as the agent process |
-| `port` | string | no | `"3100"` | HTTP/WebSocket listen port |
-
-Performs ACP handshake (initialize + authenticate) at startup. Channel adapters (like telegram) connect via WebSocket to send/receive messages. See the [ACP protocol reference](reference/channel-manager-protocol.md) for details.
-
----
-
-## Local Plugins
-
-Project-local plugins are referenced with a `./` path:
-
-```yaml
-installations:
-  - plugin: ./plugins/my-plugin
-    options:
-      key: value
-```
-
-See [Creating Plugins](guides/creating-plugins.md) for how to build your own.
-
-## Planned Plugins
-
-| Plugin | Purpose | Status |
-|--------|---------|--------|
-| `@builtin/docker` | DinD sidecar with Docker API validation proxy | Planned |
-| `@builtin/slack` | Slack channel adapter (like telegram) | Planned |
+Key patterns: multiple routes + middleware, `gw.http.fetch` for token exchange, `gw.fs` for token persistence, `ctx.abort` for auth gating, `ctx.response.*` for route responses.
