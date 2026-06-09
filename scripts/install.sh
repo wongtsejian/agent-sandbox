@@ -3,7 +3,7 @@ set -e
 
 AGENT_SANDBOX_HOME="${AGENT_SANDBOX_HOME:-$HOME/.agent-sandbox}"
 BIN_DIR="$AGENT_SANDBOX_HOME/bin"
-SHIM_URL="https://raw.githubusercontent.com/donbader/agent-sandbox/main/scripts/shim.sh"
+SHIM_URL="https://github.com/donbader/agent-sandbox/releases/download/shim-latest/shim.sh"
 
 printf 'Installing agent-sandbox shim...\n'
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-SHIM_VERSION="1.1.0"
+SHIM_VERSION="1.2.0"
 GITHUB_REPO="donbader/agent-sandbox"
 SANDBOX_HOME="${AGENT_SANDBOX_HOME:-$HOME/.agent-sandbox}"
 CACHE_DIR="$SANDBOX_HOME/core"
@@ -86,8 +86,17 @@ done
 
 case "$_CMD" in
   upgrade)
-    curl -fsSL "https://raw.githubusercontent.com/$GITHUB_REPO/main/scripts/install.sh" | sh
-    exit $?
+    INSTALL_URL="https://github.com/$GITHUB_REPO/releases/download/shim-latest/shim.sh"
+    curl -fsSL "$INSTALL_URL" -o "$SANDBOX_HOME/bin/agent-sandbox" || die "Failed to download shim"
+    chmod +x "$SANDBOX_HOME/bin/agent-sandbox"
+    # Replace existing binary on PATH if different location
+    EXISTING=$(command -v agent-sandbox 2>/dev/null || true)
+    if [ -n "$EXISTING" ] && [ "$EXISTING" != "$SANDBOX_HOME/bin/agent-sandbox" ]; then
+      cp "$SANDBOX_HOME/bin/agent-sandbox" "$EXISTING" 2>/dev/null || sudo cp "$SANDBOX_HOME/bin/agent-sandbox" "$EXISTING"
+    fi
+    _ver=$(grep '^SHIM_VERSION=' "$SANDBOX_HOME/bin/agent-sandbox" | cut -d'"' -f2)
+    printf 'Upgraded to shim v%s\n' "$_ver"
+    exit 0
     ;;
   version)
     echo "shim: $SHIM_VERSION"
