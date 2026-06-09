@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=.build/fleet-schema.json
+agents:
+  - codex
+  - claude
+  - pi
+
+shared:
+  installations:
+    - plugin: "@builtin/github-pat"
+      options:
+        token: "${GITHUB_PAT}"
+    - plugin: "@builtin/mcp-oauth"
+      options:
+        providers:
+          notion:
+            mcp_url: https://mcp.notion.com/mcp
+    - plugin: "@builtin/home-override"
+      options:
+        home_directory: "./home"
+        volume: true
+  gateway:
+    services:
+      - url: http://host.containers.internal:8000/v1
+        headers:
+          Authorization: Bearer ${STX_LLM_GATEWAY_API_KEY}

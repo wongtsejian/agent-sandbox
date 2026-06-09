@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=../.build/schema.json
+name: codex
+core_version: latest
+runtime_engine: podman
+
+runtime:
+  image: "@builtin/codex"
+  environment:
+    OPENAI_BASE_URL: "http://host.containers.internal:8000/v1"
+    OPENAI_API_KEY: "dummy"
+  volumes:
+    - "workspace:/home/agent/workspace"
+
+installations:
+  - plugin: "@builtin/ssh"
+    options:
+      port: 2222
+      authorized_keys: "./sandbox_key.pub"

@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=../.build/schema.json
+name: claude
+core_version: latest
+runtime_engine: podman
+
+runtime:
+  image: "@builtin/claude-code"
+  environment:
+    ANTHROPIC_BASE_URL: "http://host.containers.internal:8000/v1"
+    ANTHROPIC_API_KEY: "dummy"
+  volumes:
+    - "workspace:/home/agent/workspace"
+
+installations:
+  - plugin: "@builtin/ssh"
+    options:
+      port: 2223
+      authorized_keys: "./sandbox_key.pub"

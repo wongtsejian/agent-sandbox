@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=../.build/schema.json
+name: pi
+core_version: latest
+runtime_engine: podman
+
+runtime:
+  image: "@builtin/pi"
+  environment:
+    ANTHROPIC_BASE_URL: "http://host.containers.internal:8000/v1"
+    ANTHROPIC_API_KEY: "sk-ant-api03-dummy-key-for-gateway-proxy-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-xxxxxxxx"
+  volumes:
+    - "workspace:/home/agent/workspace"
+
+installations:
+  - plugin: "@builtin/ssh"
+    options:
+      port: 2224
+      authorized_keys: "./sandbox_key.pub"
