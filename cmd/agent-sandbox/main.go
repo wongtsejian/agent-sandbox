@@ -414,7 +414,7 @@ func upgradeCmd() *cobra.Command {
 }
 
 func fetchLatestVersion() (string, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", upgradeRepo)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=20", upgradeRepo)
 	resp, err := http.Get(url) //nolint:gosec // URL is constructed from a constant
 	if err != nil {
 		return "", err
@@ -425,13 +425,20 @@ func fetchLatestVersion() (string, error) {
 		return "", fmt.Errorf("GitHub API returned %d", resp.StatusCode)
 	}
 
-	var release struct {
+	var releases []struct {
 		TagName string `json:"tag_name"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		return "", err
 	}
-	return release.TagName, nil
+
+	// Find the latest CLI release (v* prefix, not core-v*)
+	for _, r := range releases {
+		if strings.HasPrefix(r.TagName, "v") && !strings.HasPrefix(r.TagName, "core-v") {
+			return r.TagName, nil
+		}
+	}
+	return "", fmt.Errorf("no CLI release found")
 }
 
 func downloadFile(url, dest string) error {
