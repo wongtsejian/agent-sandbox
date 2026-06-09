@@ -41,17 +41,8 @@ func BuildCompose(cfg *config.Config, contribs *plugin.Contributions, projectDir
 	}
 	// Build cap_add from base set plus plugin contributions.
 	baseCaps := []string{"NET_ADMIN", "SETUID", "SETGID", "DAC_OVERRIDE", "CHOWN", "FOWNER"}
-	if contribs != nil && len(contribs.Runtime.CapAdd) > 0 {
-		seen := make(map[string]bool, len(baseCaps))
-		for _, c := range baseCaps {
-			seen[c] = true
-		}
-		for _, c := range contribs.Runtime.CapAdd {
-			if !seen[c] {
-				baseCaps = append(baseCaps, c)
-				seen[c] = true
-			}
-		}
+	if contribs != nil {
+		baseCaps = mergeCapabilities(baseCaps, contribs.Runtime.CapAdd)
 	}
 
 	agentSvc := map[string]any{
@@ -310,17 +301,8 @@ func BuildFleetCompose(agents []ComposeAgentEntry, projectDir string) (string, e
 
 		// Build cap_add from base set plus plugin contributions.
 		fleetBaseCaps := []string{"NET_ADMIN", "SETUID", "SETGID", "DAC_OVERRIDE", "CHOWN", "FOWNER"}
-		if agent.Contribs != nil && len(agent.Contribs.Runtime.CapAdd) > 0 {
-			seen := make(map[string]bool, len(fleetBaseCaps))
-			for _, c := range fleetBaseCaps {
-				seen[c] = true
-			}
-			for _, c := range agent.Contribs.Runtime.CapAdd {
-				if !seen[c] {
-					fleetBaseCaps = append(fleetBaseCaps, c)
-					seen[c] = true
-				}
-			}
+		if agent.Contribs != nil {
+			fleetBaseCaps = mergeCapabilities(fleetBaseCaps, agent.Contribs.Runtime.CapAdd)
 		}
 
 		agentSvc := map[string]any{
@@ -450,12 +432,21 @@ func BuildFleetCompose(agents []ComposeAgentEntry, projectDir string) (string, e
 	return string(data), nil
 }
 
-// hasPlugin reports whether the given plugin name is present in the installations list.
-func hasPlugin(installations []config.Installation, name string) bool {
-	for _, inst := range installations {
-		if inst.Plugin == name {
-			return true
+// mergeCapabilities deduplicates contributed capabilities into the base set.
+// Returns base unmodified if contributed is empty.
+func mergeCapabilities(base, contributed []string) []string {
+	if len(contributed) == 0 {
+		return base
+	}
+	seen := make(map[string]bool, len(base))
+	for _, c := range base {
+		seen[c] = true
+	}
+	for _, c := range contributed {
+		if !seen[c] {
+			base = append(base, c)
+			seen[c] = true
 		}
 	}
-	return false
+	return base
 }

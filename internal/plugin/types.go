@@ -39,7 +39,7 @@ type RuntimeContrib struct {
 	PreEntrypoint []string `yaml:"pre_entrypoint"`
 	Ports         []string `yaml:"ports"`
 	Volumes       []string `yaml:"volumes"`
-	CapAdd        []string `yaml:"cap_add"`
+	CapAdd        []string `yaml:"cap_add"` // validated at install time if plugin source is remote
 	SkipUserns    bool     `yaml:"skip_userns"`
 }
 

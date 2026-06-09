@@ -7,6 +7,7 @@ import (
 	"github.com/donbader/agent-sandbox/internal/plugin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func TestBuildCompose(t *testing.T) {
@@ -202,11 +203,25 @@ func TestBuildCompose_PluginCapAddDedup(t *testing.T) {
 	output, err := BuildCompose(cfg, contribs, "/project")
 	require.NoError(t, err)
 
-	// SYS_CHROOT should appear once (from plugin)
-	assert.Contains(t, output, "- SYS_CHROOT")
-	// Count NET_ADMIN occurrences in the agent cap_add section — it appears in gateway too,
-	// but we just verify no error and it's present.
-	assert.Contains(t, output, "- NET_ADMIN")
+	var composed struct {
+		Services map[string]struct {
+			CapAdd []string `yaml:"cap_add"`
+		} `yaml:"services"`
+	}
+	err = yaml.Unmarshal([]byte(output), &composed)
+	require.NoError(t, err)
+
+	agentCaps := composed.Services["dedup-agent"].CapAdd
+	// NET_ADMIN appears exactly once in the agent's cap_add list.
+	count := 0
+	for _, c := range agentCaps {
+		if c == "NET_ADMIN" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "NET_ADMIN should appear exactly once")
+	// SYS_CHROOT contributed by plugin is present.
+	assert.Contains(t, agentCaps, "SYS_CHROOT")
 }
 
 func TestBuildFleetCompose(t *testing.T) {
@@ -350,4 +365,66 @@ func TestBuildFleetCompose_SidecarBuildPath(t *testing.T) {
 	assert.Contains(t, output, "../dorey-001/plugins/telegram/telegram-adapter")
 	// Must NOT contain ../../ (two levels up — the bug)
 	assert.NotContains(t, output, "../../dorey-001/plugins/telegram/telegram-adapter")
+}
+
+func TestBuildFleetCompose_PluginCapAdd(t *testing.T) {
+	agents := []ComposeAgentEntry{
+		{
+			Config: &config.Config{
+				Name: "fleet-cap-agent",
+				Runtime: config.RuntimeConfig{
+					Image: "@builtin/codex",
+				},
+			},
+			Contribs: &plugin.Contributions{
+				Runtime: plugin.RuntimeContrib{
+					CapAdd: []string{"SYS_CHROOT"},
+				},
+				Sidecar: plugin.SidecarContrib{Services: map[string]plugin.ComposeService{}},
+			},
+			BuildDir: "/project/.build/fleet-cap-agent",
+		},
+	}
+
+	output, err := BuildFleetCompose(agents, "/project")
+	require.NoError(t, err)
+
+	var composed struct {
+		Services map[string]struct {
+			CapAdd []string `yaml:"cap_add"`
+		} `yaml:"services"`
+	}
+	err = yaml.Unmarshal([]byte(output), &composed)
+	require.NoError(t, err)
+
+	agentCaps := composed.Services["fleet-cap-agent"].CapAdd
+	assert.Contains(t, agentCaps, "SYS_CHROOT", "plugin-contributed cap should appear in fleet agent")
+	assert.Contains(t, agentCaps, "NET_ADMIN", "base cap should still be present")
+}
+
+func TestBuildFleetCompose_SkipUserns(t *testing.T) {
+	agents := []ComposeAgentEntry{
+		{
+			Config: &config.Config{
+				Name:          "fleet-podman-agent",
+				RuntimeEngine: "podman",
+				Runtime: config.RuntimeConfig{
+					Image: "@builtin/codex",
+				},
+			},
+			Contribs: &plugin.Contributions{
+				Runtime: plugin.RuntimeContrib{
+					SkipUserns: true,
+				},
+				Sidecar: plugin.SidecarContrib{Services: map[string]plugin.ComposeService{}},
+			},
+			BuildDir: "/project/.build/fleet-podman-agent",
+		},
+	}
+
+	output, err := BuildFleetCompose(agents, "/project")
+	require.NoError(t, err)
+
+	// Plugin declares skip_userns on a podman engine — userns_mode must NOT appear.
+	assert.NotContains(t, output, "userns_mode")
 }
