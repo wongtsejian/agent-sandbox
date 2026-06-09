@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/dop251/goja"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,6 +80,26 @@ func TestRequestContext_Abort(t *testing.T) {
 
 	assert.Equal(t, 401, ctx.AbortStatus)
 	assert.Equal(t, `{"error":"unauthorized"}`, ctx.AbortBody)
+}
+
+func TestRequestContext_Env(t *testing.T) {
+	t.Setenv("TEST_PLUGIN_VAR", "secret123")
+
+	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
+	req.Host = "example.com"
+
+	vm := NewVM()
+	ctx := NewRequestContext(req, nil)
+	require.NoError(t, vm.Set("ctx", ctx.ToJSObject(vm)))
+
+	val, err := vm.RunString(`ctx.env("TEST_PLUGIN_VAR")`)
+	require.NoError(t, err)
+	assert.Equal(t, "secret123", val.Export())
+
+	// Undefined for missing vars
+	val, err = vm.RunString(`ctx.env("NONEXISTENT_VAR")`)
+	require.NoError(t, err)
+	assert.True(t, goja.IsUndefined(val))
 }
 
 func TestRequestContext_RouteHandler(t *testing.T) {

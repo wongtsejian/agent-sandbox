@@ -3,6 +3,7 @@ package jsruntime
 import (
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/dop251/goja"
 )
@@ -81,9 +82,19 @@ func (rc *RequestContext) ToJSObject(vm *VM) map[string]any {
 		},
 	}
 
+	rt := vm.Runtime()
+
 	return map[string]any{
 		"request":  requestObj,
 		"response": responseObj,
+		"env": func(call goja.FunctionCall) goja.Value {
+			key := call.Argument(0).String()
+			val := os.Getenv(key)
+			if val == "" {
+				return goja.Undefined()
+			}
+			return rt.ToValue(val)
+		},
 		"abort": func(call goja.FunctionCall) goja.Value {
 			rc.AbortStatus = int(call.Argument(0).ToInteger())
 			if len(call.Arguments) > 1 {
