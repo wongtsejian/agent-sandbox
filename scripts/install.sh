@@ -1,42 +1,31 @@
 #!/bin/sh
+# Install or upgrade the agent-sandbox shim.
 set -e
 
 AGENT_SANDBOX_HOME="${AGENT_SANDBOX_HOME:-$HOME/.agent-sandbox}"
 BIN_DIR="$AGENT_SANDBOX_HOME/bin"
 SHIM_URL="https://github.com/donbader/agent-sandbox/releases/download/shim-latest/shim.sh"
 
-printf 'Installing agent-sandbox shim...\n'
+printf 'Installing agent-sandbox...\n'
 
+# Download shim
 mkdir -p "$BIN_DIR"
-curl -fsSL "$SHIM_URL" -o "$BIN_DIR/agent-sandbox" || { printf 'Error: failed to download shim from %s\n' "$SHIM_URL" >&2; exit 1; }
+curl -fsSL "$SHIM_URL" -o "$BIN_DIR/agent-sandbox" \
+  || { printf 'Error: failed to download shim from %s\n' "$SHIM_URL" >&2; exit 1; }
 chmod +x "$BIN_DIR/agent-sandbox"
 
-# If an existing agent-sandbox binary is on PATH (and it's not our shim),
-# replace it in-place so the user doesn't need to change PATH.
+# If an old binary exists elsewhere on PATH, replace it in-place
 EXISTING=$(command -v agent-sandbox 2>/dev/null || true)
 if [ -n "$EXISTING" ] && [ "$EXISTING" != "$BIN_DIR/agent-sandbox" ]; then
-  # Check it's not the shim already (shim has SHIM_VERSION near the top)
-  if ! grep -q 'SHIM_VERSION=' "$EXISTING" 2>/dev/null; then
-    printf 'Replacing existing binary at %s\n' "$EXISTING"
-    if cp "$BIN_DIR/agent-sandbox" "$EXISTING" 2>/dev/null; then
-      printf 'Done. agent-sandbox is now the shim.\n'
-    else
-      printf 'Permission denied. Trying with sudo...\n'
-      sudo cp "$BIN_DIR/agent-sandbox" "$EXISTING"
-      printf 'Done. agent-sandbox is now the shim.\n'
-    fi
-  fi
+  printf 'Replacing %s\n' "$EXISTING"
+  cp "$BIN_DIR/agent-sandbox" "$EXISTING" 2>/dev/null \
+    || sudo cp "$BIN_DIR/agent-sandbox" "$EXISTING"
 else
   case ":$PATH:" in
-    *":$BIN_DIR:"*)
-      printf 'Already on PATH.\n'
-      ;;
-    *)
-      printf 'Add to your shell profile:\n'
-      printf '  export PATH="%s:$PATH"\n' "$BIN_DIR"
-      ;;
+    *":$BIN_DIR:"*) ;;
+    *) printf 'Add to your shell profile:\n  export PATH="%s:$PATH"\n' "$BIN_DIR" ;;
   esac
 fi
 
 _ver=$(grep '^SHIM_VERSION=' "$BIN_DIR/agent-sandbox" | cut -d'"' -f2)
-printf '\nInstalled agent-sandbox shim v%s\n' "$_ver"
+printf 'Installed agent-sandbox shim v%s\n' "$_ver"
