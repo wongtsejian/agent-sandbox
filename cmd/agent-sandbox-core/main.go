@@ -14,23 +14,40 @@ import (
 
 var version = "dev"
 
+// coreRoot is resolved at init time from the binary's own location.
+// It points to the directory containing this binary and its sibling assets
+// (gateway/, plugins/, presets/, templates/).
+var coreRoot string
+
+func init() {
+	exe, err := os.Executable()
+	if err == nil {
+		exe, err = filepath.EvalSymlinks(exe)
+		if err == nil {
+			coreRoot = filepath.Dir(exe)
+		}
+	}
+	if coreRoot == "" {
+		coreRoot = "."
+	}
+}
+
 func main() {
 	var dir string
 
 	root := &cobra.Command{
-		Use:              "agent-sandbox",
-		Short:            "Opinionated agent sandbox orchestrator",
+		Use:              "agent-sandbox-core",
+		Short:            "Opinionated agent sandbox orchestrator (core binary)",
 		Version:          version,
 		TraverseChildren: true,
 	}
 
 	root.PersistentFlags().StringVarP(&dir, "dir", "C", ".", "Project directory containing agent.yaml")
 
-	root.AddCommand(generateV1Cmd(&dir))
+	root.AddCommand(generateCmd(&dir))
 	root.AddCommand(composeCmd(&dir))
 	root.AddCommand(auditCmd(&dir))
 	root.AddCommand(initCmd())
-	root.AddCommand(upgradeCmd())
 	root.AddCommand(gatewayURLCmd(&dir))
 
 	if err := root.Execute(); err != nil {
@@ -219,7 +236,7 @@ func initSingleAgent(reader *bufio.Reader) error {
 	var b strings.Builder
 	b.WriteString("# yaml-language-server: $schema=.build/schema.json\n")
 	_, _ = fmt.Fprintf(&b, "name: %s\n", name)
-	b.WriteString("core_version: latest\n")
+	_, _ = fmt.Fprintf(&b, "core_version: %s\n", coreVersionForInit())
 	b.WriteString("runtime:\n")
 	_, _ = fmt.Fprintf(&b, "  image: \"@builtin/%s\"\n", rt)
 	b.WriteString("  entrypoint: [\"sleep\", \"infinity\"]\n")
@@ -269,7 +286,7 @@ func initFleet(reader *bufio.Reader, count int) error {
 		var agent strings.Builder
 		agent.WriteString("# yaml-language-server: $schema=../.build/schema.json\n")
 		_, _ = fmt.Fprintf(&agent, "name: %s\n", agentName)
-		agent.WriteString("core_version: latest\n")
+		_, _ = fmt.Fprintf(&agent, "core_version: %s\n", coreVersionForInit())
 		agent.WriteString("runtime:\n")
 		_, _ = fmt.Fprintf(&agent, "  image: \"@builtin/%s\"\n", rt)
 		agent.WriteString("installations: []\n")
@@ -320,66 +337,17 @@ func prompt(reader *bufio.Reader, message string) string {
 	return strings.TrimSpace(line)
 }
 
+func coreVersionForInit() string {
+	if version == "dev" {
+		return "latest"
+	}
+	return version
+}
+
 func mustCwd() string {
 	dir, err := os.Getwd()
 	if err != nil {
 		return "agent"
 	}
 	return dir
-}
-
-const upgradeRepo = "donbader/agent-sandbox"
-
-func upgradeCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "upgrade",
-		Short: "Migrate to the shim-based CLI",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Determine sandbox home directory
-			sandboxHome := os.Getenv("AGENT_SANDBOX_HOME")
-			if sandboxHome == "" {
-				home, err := os.UserHomeDir()
-				if err != nil {
-					return fmt.Errorf("determining home directory: %w", err)
-				}
-				sandboxHome = filepath.Join(home, ".agent-sandbox")
-			}
-
-			// Check if already migrated
-			shimPath := filepath.Join(sandboxHome, "bin", "agent-sandbox")
-			if _, err := os.Stat(shimPath); err == nil {
-				fmt.Println("Already migrated.")
-				return nil
-			}
-
-			// Download and run the install script
-			installURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/main/scripts/install.sh", upgradeRepo)
-			fmt.Println("Installing shim-based CLI...")
-			installCmd := exec.Command("sh", "-c", fmt.Sprintf("curl -fsSL '%s' | sh", installURL))
-			installCmd.Stdin = os.Stdin
-			installCmd.Stdout = os.Stdout
-			installCmd.Stderr = os.Stderr
-			if err := installCmd.Run(); err != nil {
-				return fmt.Errorf("install script failed: %w", err)
-			}
-
-			// Resolve current binary path
-			execPath, err := os.Executable()
-			if err != nil {
-				return fmt.Errorf("finding current binary: %w", err)
-			}
-			execPath, err = filepath.EvalSymlinks(execPath)
-			if err != nil {
-				return fmt.Errorf("resolving binary path: %w", err)
-			}
-
-			// Print migration instructions
-			fmt.Println("\nMigration complete.")
-			fmt.Println("Add ~/.agent-sandbox/bin to your PATH (before your current binary location).")
-			fmt.Println("Then remove the old agent-sandbox binary:")
-			fmt.Printf("  rm %s\n", execPath)
-
-			return nil
-		},
-	}
 }
