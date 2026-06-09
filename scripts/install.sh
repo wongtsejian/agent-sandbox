@@ -38,4 +38,5 @@ else
   esac
 fi
 
-printf '\nRun: agent-sandbox version\n'
+_ver=$(grep '^SHIM_VERSION=' "$BIN_DIR/agent-sandbox" | cut -d'"' -f2)
+printf '\nInstalled agent-sandbox shim v%s\n' "$_ver"
