@@ -1,17 +1,16 @@
 # agent-manager-acp
 
-ACP (Agent Client Protocol) proxy that spawns an agent process and exposes it over HTTP/WebSocket for channel adapters.
+ACP (Agent Client Protocol) proxy that spawns an agent process and exposes it over stdio for ACP clients like OpenACP.
 
 ## How It Works
 
-At container startup, the agent-manager:
+When spawned by a parent process (e.g., OpenACP):
 
-1. Spawns the configured `acp_command` as a child process
-2. Communicates with it via ACP over stdio (JSON-RPC 2.0)
-3. Performs the ACP handshake (initialize + authenticate)
-4. Exposes an HTTP/WebSocket server on the configured port
-
-Channel adapters (like the telegram plugin) connect to this WebSocket endpoint to send user messages and receive agent responses.
+1. Reads `config.json` for the `acp_command` and working directory
+2. Spawns the configured agent as a child process
+3. Communicates with it via ACP over stdio (JSON-RPC 2.0)
+4. Performs the ACP handshake (initialize + authenticate)
+5. Relays ACP messages between parent (stdin/stdout) and agent child process
 
 ## Usage
 
@@ -20,7 +19,6 @@ installations:
   - plugin: "@builtin/agent-manager-acp"
     options:
       acp_command: ["codex-acp"]
-      port: "3100"
 ```
 
 ## Options
@@ -28,7 +26,7 @@ installations:
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
 | `acp_command` | array | yes | — | Command to spawn the agent via ACP over stdio |
-| `port` | string | no | `"3100"` | HTTP/WebSocket listen port |
+| `acp_install` | string | no | `"true"` | Shell command to install the ACP adapter (e.g. `npm install -g codex-acp@0.15.0`) |
 
 ### Common `acp_command` values
 
@@ -41,33 +39,36 @@ installations:
 ## What It Contributes
 
 - **Runtime (build):** Copies agent-manager TypeScript source, compiles it, writes `config.json` with the ACP command and working directory
-- **Runtime (ports):** Exposes the ACP HTTP/WS port
 
 ## Architecture
 
 ```
-Channel Adapter (sidecar)
-    │ WebSocket (ws://agent:<port>/acp)
-    ▼
-Agent Manager (inside agent container)
+OpenACP / ACP Client (parent process)
     │ ACP over stdio (JSON-RPC 2.0)
     ▼
-Agent Process (codex-acp, claude-agent-acp, etc.)
+Agent Manager (spawned as subprocess)
+    │ ACP over stdio (JSON-RPC 2.0)
+    ▼
+Agent Process (codex-acp, claude-agent-acp, pi-acp, etc.)
     │ HTTPS (transparent proxy)
     ▼
 Gateway (MITM + credential injection)
 ```
 
+## Stdio Relay
+
+The agent-manager acts as a transparent relay between its parent's stdin/stdout and the agent child process, with these interceptions:
+
+- **initialize**: Returns cached init result (agent already initialized at startup)
+- **auth/authenticate**: Returns empty success (auth handled at startup)
+- **session/new**: Injects `cwd` from config
+- **/restart**: Restarts the agent process
+- **Error surfacing**: Detects auth errors, rate limits, and upstream failures from agent stderr
+
 ## Protocol
 
-The agent-manager implements the ACP server specification. Channel adapters connect via WebSocket and can:
-
-- Create sessions (`session/new`)
-- Send prompts (`session/prompt`)
-- Receive streaming responses via SSE or WebSocket frames
-
-See [ACP Protocol Reference](../../docs/reference/channel-manager-protocol.md) for the full specification.
+The parent process communicates via ndjson (newline-delimited JSON-RPC 2.0) on stdin/stdout. All agent logs go to stderr to keep the stdio channel clean for ACP traffic.
 
 ## Dependencies
 
-This plugin is required by channel adapters (e.g., telegram). If a plugin declares `requires: ["@builtin/agent-manager-acp"]` and this plugin is not installed, generation fails with an error.
+This plugin is required by channel adapters. If a plugin declares `requires: ["@builtin/agent-manager-acp"]` and this plugin is not installed, generation fails with an error.
