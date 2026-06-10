@@ -12,11 +12,6 @@ options:
     required: false
     default: "true"
     description: "Shell command to install the ACP adapter binary (e.g. 'npm install -g @zed-industries/codex-acp@0.15.0'). Defaults to no-op."
-  port:
-    type: string
-    required: false
-    default: "0"
-    description: "HTTP/WS port for the ACP server. Set to a port number (e.g. '3100') to enable WebSocket relay. Default: disabled (stdio only)."
 
 contributes:
   runtime:
@@ -24,6 +19,4 @@ contributes:
       - "RUN --mount=type=cache,target=/root/.npm {{ .plugin.options.acp_install }}"
       - "COPY {{ asset \"agent-manager\" }}/ /opt/agent-manager-src/"
       - "RUN cd /opt/agent-manager-src && npm install && npm run build && mkdir -p /opt/agent-manager && mv dist /opt/agent-manager/dist && mv node_modules /opt/agent-manager/node_modules && rm -rf /opt/agent-manager-src"
-      - "RUN echo '{\"acp_command\":{{ toJSON (index .plugin.options \"acp_command\") }},\"cwd\":\"{{ .agent.runtime.cwd }}\",\"ws_port\":{{ .plugin.options.port }}}' > /opt/agent-manager/config.json"
-    ports:
-      - "{{ .plugin.options.port }}"
+      - "RUN echo '{\"acp_command\":{{ toJSON (index .plugin.options \"acp_command\") }},\"cwd\":\"{{ .agent.runtime.cwd }}\"}' > /opt/agent-manager/config.json"

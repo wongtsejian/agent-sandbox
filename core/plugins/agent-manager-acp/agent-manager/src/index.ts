@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createLogger } from "./logger.js";
 import { AgentProcess } from "./agent-process.js";
-import { AcpServer } from "./acp-server.js";
 import { StdioRelay } from "./stdio-relay.js";
 
 const log = createLogger("agent-manager");
@@ -9,7 +8,6 @@ const log = createLogger("agent-manager");
 interface ManagerConfig {
   acp_command: string[];
   cwd: string;
-  ws_port?: number;
 }
 
 async function main(): Promise<void> {
@@ -62,36 +60,16 @@ async function main(): Promise<void> {
     log.info("agent ACP authenticated");
   }
 
-  // WebSocket server: controlled by plugin.options.port in config.
-  // Default is 0 (disabled, stdio-only). Set to a port number to enable.
-  const wsPort = config.ws_port ?? 0;
-
-  // Stdio relay: always available for local ACP clients.
-  // Don't exit on stdin close when WebSocket server is also running.
-  const relay = new StdioRelay(agent, config.cwd, { exitOnClose: wsPort <= 0 });
+  // Stdio relay: the only interface. Parent (OpenACP) communicates via stdin/stdout.
+  const relay = new StdioRelay(agent, config.cwd, { exitOnClose: true });
   relay.setInitResult(initResp.result);
   relay.start();
 
-  if (wsPort > 0) {
-    const server = new AcpServer(agent, { port: wsPort, cwd: config.cwd });
-    server.setInitResult(initResp.result);
-    await server.start();
-    log.info({ port: wsPort }, "WebSocket ACP endpoint available");
-
-    process.on("SIGTERM", async () => {
-      log.info("shutting down");
-      await server.stop();
-      await agent.stop();
-      process.exit(0);
-    });
-  } else {
-    log.info("WebSocket server disabled (port=0)");
-    process.on("SIGTERM", async () => {
-      log.info("shutting down");
-      await agent.stop();
-      process.exit(0);
-    });
-  }
+  process.on("SIGTERM", async () => {
+    log.info("shutting down");
+    await agent.stop();
+    process.exit(0);
+  });
 }
 
 main().catch((err) => {
