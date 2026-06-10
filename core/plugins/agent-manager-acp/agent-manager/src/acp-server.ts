@@ -46,6 +46,28 @@ export class AcpServer {
 
   async start(): Promise<void> {
     this.agent.on("message", (msg: JsonRpcMessage) => this.handleAgentMessage(msg));
+
+    this.agent.on("exit", (code: number | null, signal: string | null) => {
+      log.warn({ code, signal }, "agent exited — notifying clients");
+      this.broadcastError(`Agent process exited unexpectedly (code=${code}, signal=${signal})`);
+    });
+
+    this.agent.on("error", (err: Error) => {
+      log.error({ err }, "agent process error — notifying clients");
+      this.broadcastError(`Agent process error: ${err.message}`);
+    });
+
+    this.agent.on("stderr", (text: string) => {
+      // Surface actionable errors to clients
+      if (/\b(401|403|unauthorized|forbidden|authentication failed|invalid.*key|expired.*token)\b/i.test(text)) {
+        this.broadcastError(`Agent authentication error: ${text.slice(0, 200)}`);
+      } else if (/\b(429|rate.?limit|too many requests)\b/i.test(text)) {
+        this.broadcastError(`Agent rate limited: ${text.slice(0, 200)}`);
+      } else if (/\b(500|502|503|504|internal server error|service unavailable|bad gateway)\b/i.test(text)) {
+        this.broadcastError(`Agent upstream error: ${text.slice(0, 200)}`);
+      }
+    });
+
     this.httpServer = createServer(this.handleHttp.bind(this));
     this.wss = new WebSocketServer({ server: this.httpServer });
     this.wss.on("connection", this.handleWebSocket.bind(this));
@@ -87,6 +109,21 @@ export class AcpServer {
     for (const res of this.sseClients) {
       res.write(`data: ${data}\n\n`);
     }
+  }
+
+  private broadcastError(message: string): void {
+    const notification: JsonRpcMessage = {
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "__system__",
+        update: {
+          sessionUpdate: "error",
+          error: { code: -32000, message },
+        },
+      },
+    };
+    this.broadcastToClients(notification);
   }
 
   private forwardAndWait(msg: JsonRpcMessage, timeoutMs = 30000): Promise<JsonRpcMessage> {

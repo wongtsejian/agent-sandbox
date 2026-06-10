@@ -43,7 +43,11 @@ export class AgentProcess extends EventEmitter {
     });
 
     this.proc.stderr?.on("data", (chunk: Buffer) => {
-      log.debug({ agent_stderr: chunk.toString().trim() }, "agent stderr");
+      const text = chunk.toString().trim();
+      if (text) {
+        log.debug({ agent_stderr: text }, "agent stderr");
+        this.emit("stderr", text);
+      }
     });
 
     this.proc.on("exit", (code, signal) => {
