@@ -4,13 +4,14 @@ const level = process.env.LOG_LEVEL || "info";
 
 export const logger = pino({
   level,
+  transport: undefined,
   formatters: {
     level(label) {
       return { level: label };
     },
   },
   redact: ["token", "authorization", "*.token", "*.authorization"],
-});
+}, pino.destination(2)); // Write to stderr so stdout is reserved for ACP stdio relay
 
 export function createLogger(component: string) {
   return logger.child({ component });
