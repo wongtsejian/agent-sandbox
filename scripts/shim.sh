@@ -5,7 +5,7 @@ SHIM_VERSION="1.6.0"
 GITHUB_REPO="donbader/agent-sandbox"
 SANDBOX_HOME="${AGENT_SANDBOX_HOME:-$HOME/.agent-sandbox}"
 CACHE_DIR="$SANDBOX_HOME/core"
-SHIM_URL="https://raw.githubusercontent.com/$GITHUB_REPO/main/scripts/shim.sh"
+SHIM_URL="https://api.github.com/repos/$GITHUB_REPO/contents/scripts/shim.sh"
 
 die() { printf 'Error: %s\n' "$1" >&2; exit 1; }
 
@@ -31,12 +31,19 @@ ensure_cached() {
 self_replace() {
   # Download latest shim, install to SANDBOX_HOME, replace existing on PATH
   mkdir -p "$SANDBOX_HOME/bin"
-  curl -fsSL "$SHIM_URL" -o "$SANDBOX_HOME/bin/agent-sandbox" || die "Failed to download shim"
-  chmod +x "$SANDBOX_HOME/bin/agent-sandbox"
+  _dest="$SANDBOX_HOME/bin/agent-sandbox"
+  if command -v gh >/dev/null 2>&1; then
+    gh api "repos/$GITHUB_REPO/contents/scripts/shim.sh" -H "Accept: application/vnd.github.raw" > "$_dest" \
+      || die "Failed to download shim via gh"
+  else
+    curl -fsSL -H "Accept: application/vnd.github.raw" "$SHIM_URL" -o "$_dest" \
+      || die "Failed to download shim"
+  fi
+  chmod +x "$_dest"
   _existing=$(command -v agent-sandbox 2>/dev/null || true)
-  if [ -n "$_existing" ] && [ "$_existing" != "$SANDBOX_HOME/bin/agent-sandbox" ]; then
-    cp "$SANDBOX_HOME/bin/agent-sandbox" "$_existing" 2>/dev/null \
-      || sudo cp "$SANDBOX_HOME/bin/agent-sandbox" "$_existing"
+  if [ -n "$_existing" ] && [ "$_existing" != "$_dest" ]; then
+    cp "$_dest" "$_existing" 2>/dev/null \
+      || sudo cp "$_dest" "$_existing"
   fi
 }
 
