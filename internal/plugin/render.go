@@ -70,8 +70,10 @@ func RenderContributions(p *PluginDef, opts map[string]any, ctx RenderContext) (
 	}
 
 	var rendered Contributions
-	if err := yaml.Unmarshal(buf.Bytes(), &rendered); err != nil {
-		return nil, fmt.Errorf("parse rendered contributes: %w", err)
+	decoder := yaml.NewDecoder(bytes.NewReader(buf.Bytes()))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&rendered); err != nil {
+		return nil, fmt.Errorf("parse rendered contributes for plugin %q: %w", p.Name, err)
 	}
 
 	return &rendered, nil
