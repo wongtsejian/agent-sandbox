@@ -11,12 +11,44 @@ import (
 type PluginDef struct {
 	Name           string                  `yaml:"name"`
 	Requires       []string                `yaml:"requires"`
-	Assets         []string                `yaml:"assets"`
+	Assets         []AssetEntry            `yaml:"assets"`
 	Options        map[string]OptionSchema `yaml:"options"`
 	Contributes    Contributions           `yaml:"-"` // populated after template rendering
 	ContributesRaw string                  `yaml:"-"` // raw YAML template for contributes block
 	BaseDir        string                  `yaml:"-"` // directory where plugin.yaml lives (for resolving relative paths)
 	AssetPaths     map[string]string       `yaml:"-"` // resolved asset paths (set by generator after extraction)
+}
+
+// AssetEntry describes a plugin asset directory with optional exclude patterns.
+// Supports both simple string ("agent-manager/") and extended form:
+//
+//	- path: agent-manager/
+//	  exclude: [node_modules, dist]
+type AssetEntry struct {
+	Path    string   `yaml:"path"`
+	Exclude []string `yaml:"exclude"`
+}
+
+// UnmarshalYAML allows AssetEntry to be either a plain string or a map with path/exclude.
+func (a *AssetEntry) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		a.Path = value.Value
+		return nil
+	}
+	if value.Kind == yaml.MappingNode {
+		type raw struct {
+			Path    string   `yaml:"path"`
+			Exclude []string `yaml:"exclude"`
+		}
+		var r raw
+		if err := value.Decode(&r); err != nil {
+			return err
+		}
+		a.Path = r.Path
+		a.Exclude = r.Exclude
+		return nil
+	}
+	return fmt.Errorf("asset entry must be a string or map, got %v", value.Kind)
 }
 
 type OptionSchema struct {
@@ -106,7 +138,7 @@ func ParsePluginYAML(data []byte) (*PluginDef, error) {
 	var full struct {
 		Name        string                  `yaml:"name"`
 		Requires    []string                `yaml:"requires"`
-		Assets      []string                `yaml:"assets"`
+		Assets      []AssetEntry            `yaml:"assets"`
 		Options     map[string]OptionSchema `yaml:"options"`
 		Contributes Contributions           `yaml:"contributes"`
 	}
@@ -134,7 +166,7 @@ func ParsePluginYAML(data []byte) (*PluginDef, error) {
 	var meta struct {
 		Name     string                  `yaml:"name"`
 		Requires []string                `yaml:"requires"`
-		Assets   []string                `yaml:"assets"`
+		Assets   []AssetEntry            `yaml:"assets"`
 		Options  map[string]OptionSchema `yaml:"options"`
 	}
 	if err := yaml.Unmarshal(metadataOnly, &meta); err != nil {

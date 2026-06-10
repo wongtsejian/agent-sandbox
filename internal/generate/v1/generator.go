@@ -321,9 +321,21 @@ func rewriteVolumePath(vol, relAgent string) string {
 }
 
 func extractFS(srcFS fs.FS, root, dest string) error {
+	return extractFSWithExclude(srcFS, root, dest, nil)
+}
+
+// extractFSWithExclude copies an fs.FS tree to dest, skipping entries whose
+// top-level directory name matches any pattern in exclude.
+func extractFSWithExclude(srcFS fs.FS, root, dest string, exclude []string) error {
 	return fs.WalkDir(srcFS, root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if shouldExclude(path, exclude) {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
 		}
 		destPath := filepath.Join(dest, path)
 		if d.IsDir() {
@@ -342,6 +354,27 @@ func extractFS(srcFS fs.FS, root, dest string) error {
 
 func copyDir(src, dst string) error {
 	return extractFS(os.DirFS(src), ".", dst)
+}
+
+// copyDirWithExclude copies a directory tree, skipping entries matching exclude patterns.
+func copyDirWithExclude(src, dst string, exclude []string) error {
+	return extractFSWithExclude(os.DirFS(src), ".", dst, exclude)
+}
+
+// shouldExclude returns true if any path segment matches an exclude pattern.
+func shouldExclude(path string, exclude []string) bool {
+	if len(exclude) == 0 {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(path), "/")
+	for _, part := range parts {
+		for _, pattern := range exclude {
+			if matched, _ := filepath.Match(pattern, part); matched {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func validateRequires(resolved map[string]*resolvedPlugin) error {
@@ -369,10 +402,24 @@ func (g *Generator) resolveAssetPaths(p *plugin.PluginDef, buildDir string) erro
 	}
 	p.AssetPaths = make(map[string]string, len(p.Assets))
 
-	for _, assetName := range p.Assets {
-		name := strings.TrimSuffix(assetName, "/")
+	for _, asset := range p.Assets {
+		name := strings.TrimSuffix(asset.Path, "/")
 		if p.BaseDir != "" {
-			p.AssetPaths[name] = filepath.Join(p.BaseDir, name)
+			if len(asset.Exclude) > 0 {
+				// Copy with excludes into build dir so Docker context is clean
+				srcPath := filepath.Join(p.BaseDir, name)
+				dstPath := filepath.Join(buildDir, "plugins", p.Name, name)
+				if err := copyDirWithExclude(srcPath, dstPath, asset.Exclude); err != nil {
+					return fmt.Errorf("copy asset %q with excludes: %w", name, err)
+				}
+				relPath, err := filepath.Rel(g.projectDir, dstPath)
+				if err != nil {
+					relPath = dstPath
+				}
+				p.AssetPaths[name] = relPath
+			} else {
+				p.AssetPaths[name] = filepath.Join(p.BaseDir, name)
+			}
 		} else {
 			if g.bundledFS == nil {
 				return fmt.Errorf("plugin %q declares asset %q but no bundled FS available", p.Name, name)
@@ -386,7 +433,7 @@ func (g *Generator) resolveAssetPaths(p *plugin.PluginDef, buildDir string) erro
 			if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
 				return err
 			}
-			if err := extractFS(subFS, ".", dstPath); err != nil {
+			if err := extractFSWithExclude(subFS, ".", dstPath, asset.Exclude); err != nil {
 				return fmt.Errorf("extract asset %q: %w", name, err)
 			}
 			// AssetPaths must be relative to projectDir (the Docker build context).

@@ -1,6 +1,7 @@
 name: agent-manager-acp
 assets:
-  - agent-manager/
+  - path: agent-manager/
+    exclude: [node_modules, dist]
 
 options:
   acp_command:
