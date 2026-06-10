@@ -12,8 +12,6 @@ import (
 )
 
 func generateCmd(dir *string) *cobra.Command {
-	var coreFlag string
-
 	cmd := &cobra.Command{
 		Use:   "generate",
 		Short: "Generate build artifacts from agent.yaml or fleet.yaml",
@@ -23,22 +21,10 @@ func generateCmd(dir *string) *cobra.Command {
 				return fmt.Errorf("resolve dir: %w", err)
 			}
 
-			// Resolve core directory: --core flag overrides, otherwise use coreRoot.
+			// Use auto-detected coreRoot from binary location.
 			coreDir := coreRoot
-			if coreFlag != "" {
-				abs, err := filepath.Abs(coreFlag)
-				if err != nil {
-					return fmt.Errorf("resolve --core path: %w", err)
-				}
-				if _, err := os.Stat(abs); err != nil {
-					return fmt.Errorf("--core path does not exist: %s", abs)
-				}
-				coreDir = abs
-				fmt.Fprintf(os.Stderr, "Using local core: %s\n", abs)
-			}
-
-			if coreDir == "." && coreFlag == "" {
-				fmt.Fprintf(os.Stderr, "Warning: could not detect core root from binary location. Use --core to specify.\n")
+			if coreDir == "." {
+				fmt.Fprintf(os.Stderr, "Warning: could not detect core root from binary location.\n")
 			}
 
 			// Load .env file so secrets are available for auth-header baking.
@@ -60,7 +46,6 @@ func generateCmd(dir *string) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&coreFlag, "core", "", "Path to local core directory (overrides auto-detected core root)")
 	return cmd
 }
 

@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/donbader/agent-sandbox/internal/config"
 	"github.com/donbader/agent-sandbox/internal/envvar"
@@ -78,27 +80,47 @@ func (g *Generator) writeGatewayBuild(buildDir string, cfg *config.Config, contr
 }
 
 // copyGatewayBinary copies the pre-built gateway binary into the build context.
-// For --core mode: looks for the binary at coreDir/gateway/bin/gateway-linux-amd64.
+// For --core mode: attempts to build from source if go is available, falling back
+// to a pre-built binary at coreDir/gateway/bin/gateway-linux-<arch>.
 // For embedded/release mode: extracts from gatewayFS.
-// If no binary source is available (e.g. tests, or local dev before first build),
-// writes a placeholder script that errors at container startup with a helpful message.
+// If no binary source is available, writes a placeholder script that errors at startup.
 func (g *Generator) copyGatewayBinary(gatewayDir string) error {
 	if g.coreDir != "" {
-		binaryPath := filepath.Join(g.coreDir, "gateway", "bin", "gateway-linux-amd64")
+		destPath := filepath.Join(gatewayDir, "gateway")
+		arch := detectDockerArch()
+
+		// Try building from source (dev mode)
+		srcDir := filepath.Join(g.coreDir, "..")
+		mainPkg := "./core/gateway/cmd/gateway/"
+		if _, err := os.Stat(filepath.Join(srcDir, "core", "gateway", "cmd", "gateway", "main.go")); err == nil {
+			if goPath, err := exec.LookPath("go"); err == nil {
+				fmt.Fprintf(os.Stderr, "[dev] Building gateway binary (linux/%s)...\n", arch)
+				cmd := exec.Command(goPath, "build", "-o", destPath, mainPkg)
+				cmd.Dir = srcDir
+				cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+arch, "CGO_ENABLED=0")
+				cmd.Stderr = os.Stderr
+				if err := cmd.Run(); err == nil {
+					return nil
+				}
+				fmt.Fprintf(os.Stderr, "[dev] Gateway build failed, falling back to pre-built binary\n")
+			}
+		}
+
+		// Fall back to pre-built binary
+		binaryPath := filepath.Join(g.coreDir, "gateway", "bin", "gateway-linux-"+arch)
 		data, err := os.ReadFile(binaryPath)
 		if err == nil {
-			destPath := filepath.Join(gatewayDir, "gateway")
 			if err := os.WriteFile(destPath, data, 0755); err != nil {
 				return fmt.Errorf("write gateway binary: %w", err)
 			}
 			return nil
 		}
-		// Binary not found in core dir — fall through to placeholder
 	}
 
 	if g.gatewayFS != nil {
-		// Release mode: binary should be in the tarball at bin/gateway-linux-amd64
-		data, err := fs.ReadFile(g.gatewayFS, "bin/gateway-linux-amd64")
+		arch := detectDockerArch()
+		// Release mode: binary should be in the tarball at bin/gateway-linux-<arch>
+		data, err := fs.ReadFile(g.gatewayFS, "bin/gateway-linux-"+arch)
 		if err == nil {
 			destPath := filepath.Join(gatewayDir, "gateway")
 			if err := os.WriteFile(destPath, data, 0755); err != nil {
@@ -111,9 +133,44 @@ func (g *Generator) copyGatewayBinary(gatewayDir string) error {
 
 	// No binary source — write a placeholder. Generation succeeds but container will
 	// fail at startup with a clear error. This supports generate-only workflows and tests.
-	placeholder := "#!/bin/sh\necho 'ERROR: gateway binary not included — rebuild with: GOOS=linux GOARCH=amd64 go build -o core/gateway/bin/gateway-linux-amd64 ./core/gateway/cmd/gateway/' >&2\nexit 1\n"
+	arch := detectDockerArch()
+	placeholder := fmt.Sprintf("#!/bin/sh\necho 'ERROR: gateway binary not included — rebuild with: GOOS=linux GOARCH=%s go build -o core/gateway/bin/gateway-linux-%s ./core/gateway/cmd/gateway/' >&2\nexit 1\n", arch, arch)
 	destPath := filepath.Join(gatewayDir, "gateway")
 	return os.WriteFile(destPath, []byte(placeholder), 0755)
+}
+
+// detectDockerArch returns the target architecture for the gateway binary.
+// It queries the Docker daemon first, falling back to the host's architecture.
+func detectDockerArch() string {
+	// Try Docker daemon architecture
+	cmd := exec.Command("docker", "info", "--format", "{{.Architecture}}")
+	if out, err := cmd.Output(); err == nil {
+		arch := strings.TrimSpace(string(out))
+		switch arch {
+		case "x86_64":
+			return "amd64"
+		case "aarch64":
+			return "arm64"
+		default:
+			if arch == "amd64" || arch == "arm64" {
+				return arch
+			}
+		}
+	}
+
+	// Fall back to host architecture
+	cmd = exec.Command("uname", "-m")
+	if out, err := cmd.Output(); err == nil {
+		arch := strings.TrimSpace(string(out))
+		switch arch {
+		case "x86_64":
+			return "amd64"
+		case "aarch64", "arm64":
+			return "arm64"
+		}
+	}
+
+	return "amd64" // safe default
 }
 
 // copyPluginSources copies TS source directories for each resolved plugin into
