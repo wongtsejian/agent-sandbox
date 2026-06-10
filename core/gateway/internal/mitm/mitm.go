@@ -6,6 +6,7 @@ package mitm
 import (
 	"bufio"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/donbader/agent-sandbox/core/sdk/gateway"
 )
@@ -89,8 +91,9 @@ func (h *Handler) Handle(clientConn net.Conn, initialData []byte, serverName str
 
 		// Log the request BEFORE rewriting to avoid leaking injected secrets.
 		originalPath := req.URL.Path
+		contentLength := req.ContentLength
 		ctx, rewritten := applyMiddlewareWithContext(req)
-		slog.Debug("request", "host", serverName, "method", req.Method, "path", originalPath, "rewritten", rewritten)
+		slog.Debug("request", "host", serverName, "method", req.Method, "path", originalPath, "rewritten", rewritten, "content_length", contentLength)
 
 		// If middleware aborted, return the abort response instead of forwarding
 		if ctx != nil && ctx.AbortStatus != 0 {
@@ -111,7 +114,7 @@ func (h *Handler) Handle(clientConn net.Conn, initialData []byte, serverName str
 		// Forward to real server
 		resp, err := h.forwardRequest(req, serverName)
 		if err != nil {
-			slog.Error("upstream connection failed", "host", serverName, "error", err)
+			slog.Error("upstream connection failed", "host", serverName, "method", req.Method, "path", req.URL.Path, "error", err)
 			errResp := &http.Response{
 				StatusCode: http.StatusBadGateway,
 				ProtoMajor: 1,
@@ -124,12 +127,38 @@ func (h *Handler) Handle(clientConn net.Conn, initialData []byte, serverName str
 		}
 
 		// Write response back to client
+		contentType := resp.Header.Get("Content-Type")
+		transferEncoding := resp.Header.Get("Transfer-Encoding")
+		slog.Debug("forwarding response", "host", serverName, "method", req.Method, "path", req.URL.Path, "status", resp.StatusCode, "content_type", contentType, "transfer_encoding", transferEncoding, "content_length", resp.ContentLength)
+		writeStart := time.Now()
+
+		// For streaming responses (SSE/chunked), write headers first then copy body
+		// incrementally. This avoids blocking on resp.Write() which waits for the
+		// entire body before returning — problematic for long-lived SSE streams.
+		if strings.Contains(contentType, "text/event-stream") || transferEncoding == "chunked" {
+			if err := writeResponseHeaders(tlsConn, resp); err != nil {
+				slog.Debug("stream headers write failed", "host", serverName, "path", req.URL.Path, "error", err)
+				_ = resp.Body.Close()
+				return
+			}
+			// Stream body — broken pipe here is expected (client got what it needed)
+			_, err := io.Copy(tlsConn, resp.Body)
+			_ = resp.Body.Close()
+			if err != nil {
+				slog.Debug("stream ended", "host", serverName, "method", req.Method, "path", req.URL.Path, "duration_ms", time.Since(writeStart).Milliseconds(), "error", err)
+			} else {
+				slog.Debug("stream complete", "host", serverName, "method", req.Method, "path", req.URL.Path, "duration_ms", time.Since(writeStart).Milliseconds())
+			}
+			return // SSE connections are not reused
+		}
+
 		if err := resp.Write(tlsConn); err != nil {
-			slog.Error("write response", "host", serverName, "error", err)
+			slog.Error("write response", "host", serverName, "method", req.Method, "path", req.URL.Path, "status", resp.StatusCode, "content_type", contentType, "duration_ms", time.Since(writeStart).Milliseconds(), "error", err)
 			_ = resp.Body.Close()
 			return
 		}
 		_ = resp.Body.Close()
+		slog.Debug("response complete", "host", serverName, "method", req.Method, "path", req.URL.Path, "status", resp.StatusCode, "content_type", contentType, "duration_ms", time.Since(writeStart).Milliseconds())
 
 		// Check if connection should be kept alive
 		if req.Close || resp.Close {
@@ -207,6 +236,20 @@ func (h *Handler) forwardRequest(req *http.Request, serverName string) (*http.Re
 	}
 
 	return client.Do(req)
+}
+
+// writeResponseHeaders writes the HTTP status line and headers to the connection.
+func writeResponseHeaders(conn net.Conn, resp *http.Response) error {
+	statusLine := fmt.Sprintf("HTTP/%d.%d %d %s\r\n", resp.ProtoMajor, resp.ProtoMinor, resp.StatusCode, http.StatusText(resp.StatusCode))
+	if _, err := io.WriteString(conn, statusLine); err != nil {
+		return err
+	}
+	if err := resp.Header.Write(conn); err != nil {
+		return err
+	}
+	// End of headers
+	_, err := io.WriteString(conn, "\r\n")
+	return err
 }
 
 // prefixConn wraps a net.Conn and prepends buffered data before reading from the real conn.

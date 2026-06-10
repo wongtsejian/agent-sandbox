@@ -120,6 +120,10 @@ func buildAgentPair(p agentPairParams) agentPairResult {
 	// Gateway service
 	// The gateway writes /shared/certs/ca.crt so the agent can install it.
 	gatewayEnv := collectGatewayEnvVars(cfg, contribs)
+	gatewayVolumes := append([]string{}, p.gatewayVolumes...)
+	if contribs != nil {
+		gatewayVolumes = append(gatewayVolumes, contribs.Gateway.Volumes...)
+	}
 	gatewaySvc := map[string]any{
 		"build":    p.gatewayBuild,
 		"cap_drop": []string{"ALL"},
@@ -129,7 +133,7 @@ func buildAgentPair(p agentPairParams) agentPairResult {
 				"aliases": []string{p.gatewayAlias},
 			},
 		},
-		"volumes": p.gatewayVolumes,
+		"volumes": gatewayVolumes,
 		"healthcheck": map[string]any{
 			"test":     []string{"CMD", "wget", "--spider", "-q", "http://localhost:8080/health"},
 			"interval": "5s",
@@ -141,6 +145,10 @@ func buildAgentPair(p agentPairParams) agentPairResult {
 	// Expose gateway HTTP port when plugin routes are registered (e.g. OAuth callbacks)
 	if p.exposeGateway && contribs != nil && len(contribs.Gateway.Routes) > 0 {
 		gatewaySvc["ports"] = []string{"8080"}
+	}
+	// Wire log_level from agent config to gateway container.
+	if cfg.LogLevel != "" {
+		gatewayEnv = append(gatewayEnv, "LOG_LEVEL="+cfg.LogLevel)
 	}
 	if len(gatewayEnv) > 0 {
 		gatewaySvc["environment"] = gatewayEnv
@@ -180,6 +188,12 @@ func buildAgentPair(p agentPairParams) agentPairResult {
 	// Extract named volumes from plugin runtime contributions
 	if contribs != nil {
 		for _, v := range contribs.Runtime.Volumes {
+			if volName := extractVolumeName(v); volName != "" {
+				result.volumes[volName] = nil
+			}
+		}
+		// Extract named volumes from plugin gateway contributions
+		for _, v := range contribs.Gateway.Volumes {
 			if volName := extractVolumeName(v); volName != "" {
 				result.volumes[volName] = nil
 			}

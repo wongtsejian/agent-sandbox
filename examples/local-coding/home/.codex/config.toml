@@ -4,6 +4,7 @@ model_provider = "agent_gateway_kiro"
 # --- codex-switch:end ---
 
 model_catalog_json = "/home/agent/.codex/models.json"
+sandbox = "none"
 
 [model_providers.agent_gateway_kiro]
 name = "Agent Gateway (Kiro)"
@@ -18,5 +19,5 @@ http_headers = { Authorization = "Bearer dummy" }
 wire_api = "responses"
 
 [mcp_servers.notion]
-type = "sse"
 url = "https://mcp.notion.com/mcp"
+bearer_token_env_var = "MCP_NOTION_TOKEN"

@@ -113,6 +113,7 @@ export default function(ctx: any, options: any) {
   // Try PKCE flow first (from login endpoint)
   const flow = consumePendingFlow(state);
   if (flow) {
+    gw.log.info("oauth-callback: PKCE flow found for provider=" + flow.provider);
     const providerCfg = providers[flow.provider] || {};
     let tokenEndpoint = providerCfg.token_endpoint || "";
     let clientId = providerCfg.client_id || "";
@@ -129,6 +130,7 @@ export default function(ctx: any, options: any) {
     }
 
     if (!tokenEndpoint) {
+      gw.log.error("oauth-callback: no token endpoint for " + flow.provider);
       ctx.response.status(500);
       ctx.response.body("provider token endpoint not configured");
       return;
@@ -146,6 +148,7 @@ export default function(ctx: any, options: any) {
 
     writeToken(flow.provider, token, tokenEndpoint, clientId);
     gw.secrets.register(token.access_token);
+    gw.log.info("oauth-callback: token stored for " + flow.provider + " (expires_in=" + (token.expires_in || 3600) + "s)");
     ctx.response.status(200);
     ctx.response.header("Content-Type", "text/html; charset=utf-8");
     ctx.response.body(successHTML(flow.provider));
@@ -155,6 +158,7 @@ export default function(ctx: any, options: any) {
   // Fall back to HMAC-based state (middleware-initiated flow)
   const providerName = verifyHmacState(providersJSON, state);
   if (!providerName) {
+    gw.log.error("oauth-callback: invalid state signature (no PKCE flow found, HMAC verify failed)");
     ctx.response.status(403);
     ctx.response.body("invalid state signature");
     return;

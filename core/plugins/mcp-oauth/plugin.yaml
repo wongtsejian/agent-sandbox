@@ -4,11 +4,7 @@ options:
     type: object
     required: true
     description: "Map of provider name to MCP config (each needs at least mcp_url)"
-  token_dir:
-    type: string
-    required: false
-    default: "/data/oauth-tokens"
-    description: "Directory for OAuth token files"
+
   callback_url:
     type: string
     required: false
@@ -21,7 +17,7 @@ contributes:
       - url: "{{ index $cfg "mcp_url" }}"
 {{- end }}
     volumes:
-      - "oauth-tokens:{{ .plugin.options.token_dir }}"
+      - "oauth-tokens:/data/plugins/mcp-oauth"
     middlewares:
       - script: "./src/oauth.ts"
     routes:

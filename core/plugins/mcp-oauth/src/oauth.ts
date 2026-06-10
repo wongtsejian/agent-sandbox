@@ -29,8 +29,11 @@ function domainFromURL(urlStr: string): string | null {
 function readToken(provider: string, tokenDir: string): StoredToken | null {
   try {
     const data = gw.fs.read(`${provider}.json`);
-    return JSON.parse(data);
+    const token = JSON.parse(data);
+    gw.log.debug("oauth: read token for " + provider + " (expires_at=" + token.expires_at + ")");
+    return token;
   } catch {
+    gw.log.debug("oauth: no stored token for " + provider);
     return null;
   }
 }
@@ -40,7 +43,12 @@ function writeToken(provider: string, token: StoredToken): void {
 }
 
 function refreshToken(stored: StoredToken, clientSecret?: string): StoredToken | null {
-  if (!stored.refresh_token) return null;
+  if (!stored.refresh_token) {
+    gw.log.info("oauth: no refresh_token available, cannot refresh");
+    return null;
+  }
+
+  gw.log.info("oauth: refreshing expired token (client_id=" + stored.client_id + ")");
 
   const params = [
     "grant_type=refresh_token",
@@ -64,12 +72,13 @@ function refreshToken(stored: StoredToken, clientSecret?: string): StoredToken |
   }
 
   if (resp.status !== 200) {
-    gw.log.error("oauth: refresh returned status " + resp.status);
+    gw.log.error("oauth: refresh returned status " + resp.status + " body=" + (resp.body || "").substring(0, 200));
     return null;
   }
 
   const tr = JSON.parse(resp.body);
   const expiresIn = tr.expires_in || 3600;
+  gw.log.info("oauth: refresh succeeded (expires_in=" + expiresIn + "s)");
   return {
     access_token: tr.access_token,
     refresh_token: tr.refresh_token || stored.refresh_token,
@@ -139,9 +148,12 @@ export default function(ctx: any, options: any) {
 
   if (!matchedName || !matchedCfg) return;
 
+  gw.log.debug("oauth: matched provider=" + matchedName + " for host=" + requestHost);
+
   // Try to read stored token
   const stored = readToken(matchedName, "");
   if (!stored) {
+    gw.log.info("oauth: no token for " + matchedName + ", returning oauth_required");
     // No token — check if we have registration info to build authorize URL
     let authorizeEndpoint = matchedCfg.authorize_endpoint || "";
     let clientId = matchedCfg.client_id || "";
@@ -182,12 +194,14 @@ export default function(ctx: any, options: any) {
 
   // Check if token is expired or about to expire (5 min buffer)
   if (now + 300 >= stored.expires_at) {
+    gw.log.info("oauth: token for " + matchedName + " expired or expiring soon (expires_at=" + stored.expires_at + ", now=" + now + ")");
     const clientSecret = matchedCfg.client_secret || "";
     const refreshed = refreshToken(stored, clientSecret);
     if (refreshed) {
       writeToken(matchedName, refreshed);
       gw.secrets.register(refreshed.access_token);
       ctx.request.setHeader("Authorization", "Bearer " + refreshed.access_token);
+      gw.log.info("oauth: injected refreshed token for " + matchedName);
       return;
     }
     // Refresh failed — return 401
@@ -203,4 +217,5 @@ export default function(ctx: any, options: any) {
   // Token is valid — inject it
   gw.secrets.register(stored.access_token);
   ctx.request.setHeader("Authorization", "Bearer " + stored.access_token);
+  gw.log.info("oauth: injected token for " + matchedName + " (expires_in=" + (stored.expires_at - now) + "s)");
 }

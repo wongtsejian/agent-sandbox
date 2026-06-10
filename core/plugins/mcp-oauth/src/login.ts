@@ -246,6 +246,8 @@ export default function(ctx: any, options: any) {
 
   const authorizeURL = authorizeEndpoint + "?" + params.join("&");
 
+  gw.log.info("oauth-login: initiated PKCE flow for " + providerName + " (client_id=" + clientId + ", callback=" + callbackURL + ")");
+
   ctx.response.status(200);
   ctx.response.header("Content-Type", "application/json");
   ctx.response.body(JSON.stringify({
