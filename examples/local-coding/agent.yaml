@@ -5,9 +5,6 @@ log_level: debug
 runtime:
   image: "@builtin/claude-code"
   entrypoint: ["sleep", "infinity"]
-  environment:
-    ANTHROPIC_API_KEY: "gateway-managed"
-    ANTHROPIC_BASE_URL: "https://agent-gateway.stx-ai.net/kiro"
 gateway:
   services:
     - url: https://agent-gateway.stx-ai.net

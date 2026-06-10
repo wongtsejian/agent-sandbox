@@ -1,15 +1,15 @@
 # Local Coding Example
 
-A sandboxed codex agent for interactive local coding. LLM API access is routed through the gateway for credential injection — the agent never sees your real API key.
+A sandboxed AI coding agent for interactive local development. LLM API access is routed through the gateway for credential injection — the agent never sees your real API key.
 
 ## Architecture
 
 ```
 LLM API (agent-gateway.stx-ai.net)
      ↕ (real API key injected by gateway)
-  Gateway (MITM for agent-gateway.stx-ai.net)
+  Gateway (MITM for agent-gateway.stx-ai.net, mcp.notion.com)
      ↕ (iptables DNAT, transparent to agent)
-  Agent (codex with dummy bearer token)
+  Agent (claude-code)
 ```
 
 ## Setup
@@ -31,10 +31,11 @@ agent-sandbox compose up --build -d
 Exec into the agent container as the `agent` user:
 
 ```bash
-agent-sandbox -C examples/local-coding compose exec -it --user agent coder codex
+agent-sandbox -C examples/local-coding compose exec -it --user agent coder bash
+claude
 ```
 
-> **Note:** `--user agent` is required. Without it, exec runs as root and codex won't find its config at `/home/agent/.codex/`.
+> **Note:** `--user agent` is required. Without it, exec runs as root and the agent won't find its config.
 
 ## Configuration
 
@@ -46,7 +47,7 @@ core_version: latest
 log_level: debug
 
 runtime:
-  image: "@builtin/codex"
+  image: "@builtin/claude-code"
   entrypoint: ["sleep", "infinity"]
 
 gateway:
@@ -60,29 +61,48 @@ installations:
     options:
       home_directory: "./home"
       volume: true
+  - plugin: "@builtin/mcp-oauth"
+    options:
+      providers:
+        notion:
+          mcp_url: https://mcp.notion.com/mcp
 ```
 
 ### What each piece does
 
 | Config | Purpose |
 |--------|---------|
-| `runtime.image` | Uses the codex preset (node:24-slim + codex CLI) |
+| `runtime.image` | Uses the claude-code preset (node:24-slim + Claude Code CLI) |
 | `runtime.entrypoint` | Keeps container alive for interactive exec |
 | `gateway.services` | Routes LLM traffic through gateway, injects real API key |
 | `@builtin/home-override` | Copies `./home/` into `/home/agent/`, persists via Docker volume |
+| `@builtin/mcp-oauth` | OAuth token injection for MCP servers (Notion, etc.) |
 
 ### Home directory
 
-The `home/` directory contains pre-seeded codex configuration:
+The `home/` directory contains pre-seeded agent configuration:
 
 ```
 home/
+  .claude.json          ← MCP server config (Notion)
+  .claude/
+    settings.json       ← permissions, environment
   .codex/
-    config.toml       ← provider + API base URL pointing to gateway
-    models.json       ← available models
+    config.toml         ← codex provider config (alternative runtime)
+    models.json         ← available models
 ```
 
 With `volume: true`, the home directory persists across container restarts (shell history, auth tokens, tool caches survive).
+
+## Runtime Options
+
+### Claude Code (default)
+
+The default runtime. MCP tools work end-to-end — the agent can use Notion and other MCP servers during conversations.
+
+### Codex (alternative)
+
+Switch to codex by changing `runtime.image` to `@builtin/codex`. Codex connects to the gateway and OAuth works, but **MCP tools are not included in LLM requests** due to an upstream bug in codex v0.139.0. LLM calls work fine for non-MCP tasks.
 
 ## Environment Variables
 
@@ -112,4 +132,4 @@ This example includes the `mcp-oauth` plugin configured for Notion. On first use
 
 5. Subsequent requests to Notion are authenticated transparently. No restart needed.
 
-> **Note:** No Notion developer app or API key needed. The plugin uses OAuth Dynamic Client Registration (RFC 7591) — credentials are obtained automatically.
+> **Note:** No Notion developer app or API key needed. The plugin uses OAuth Dynamic Client Registration (RFC 7591) — credentials are obtained automatically. Tokens are persisted across container restarts and auto-refresh when expired.

@@ -195,7 +195,11 @@ export default function(ctx: any, options: any) {
   // Check if token is expired or about to expire (5 min buffer)
   if (now + 300 >= stored.expires_at) {
     gw.log.info("oauth: token for " + matchedName + " expired or expiring soon (expires_at=" + stored.expires_at + ", now=" + now + ")");
-    const clientSecret = matchedCfg.client_secret || "";
+    let clientSecret = matchedCfg.client_secret || "";
+    if (!clientSecret) {
+      const reg = loadRegistration(matchedName);
+      if (reg && reg.client_secret) clientSecret = reg.client_secret;
+    }
     const refreshed = refreshToken(stored, clientSecret);
     if (refreshed) {
       writeToken(matchedName, refreshed);
