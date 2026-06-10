@@ -63,8 +63,8 @@ async function main(): Promise<void> {
   }
 
   // WebSocket server: controlled by plugin.options.port in config.
-  // Set to 0 to disable WS and run stdio-only.
-  const wsPort = config.ws_port ?? 3100;
+  // Default is 0 (disabled, stdio-only). Set to a port number to enable.
+  const wsPort = config.ws_port ?? 0;
 
   // Stdio relay: always available for local ACP clients.
   // Don't exit on stdin close when WebSocket server is also running.

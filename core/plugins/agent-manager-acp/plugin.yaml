@@ -15,8 +15,8 @@ options:
   port:
     type: string
     required: false
-    default: "3100"
-    description: "HTTP/WS port for the ACP server"
+    default: "0"
+    description: "HTTP/WS port for the ACP server. Set to a port number (e.g. '3100') to enable WebSocket relay. Default: disabled (stdio only)."
 
 contributes:
   runtime:
