@@ -150,3 +150,40 @@ contributes:
 	assert.Equal(t, "/usr/sbin/sshd -p 8022", rendered.Runtime.PreEntrypoint[0])
 	assert.Equal(t, "8022:8022", rendered.Runtime.Ports[0])
 }
+
+func TestRenderContributions_UnknownFieldError(t *testing.T) {
+	raw := `
+name: my-plugin
+contributes:
+  runtime:
+    extra_builds:
+      - "RUN echo hello"
+    entrypoint: ["my-binary"]
+`
+	p, err := ParsePluginYAML([]byte(raw))
+	require.NoError(t, err)
+
+	opts := map[string]any{}
+	_, err = RenderContributions(p, opts, RenderContext{Self: map[string]any{"name": "test-agent"}})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "my-plugin")
+}
+
+func TestRenderContributions_UnknownTopLevelField(t *testing.T) {
+	raw := `
+name: my-plugin
+contributes:
+  runtime:
+    extra_builds:
+      - "RUN echo hello"
+  bogus_section:
+    foo: bar
+`
+	p, err := ParsePluginYAML([]byte(raw))
+	require.NoError(t, err)
+
+	opts := map[string]any{}
+	_, err = RenderContributions(p, opts, RenderContext{Self: map[string]any{"name": "test-agent"}})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "my-plugin")
+}

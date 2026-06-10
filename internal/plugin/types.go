@@ -143,12 +143,16 @@ func ParsePluginYAML(data []byte) (*PluginDef, error) {
 		Contributes Contributions           `yaml:"contributes"`
 	}
 	if err := yaml.Unmarshal(data, &full); err == nil && full.Name != "" {
-		// Full parse succeeded — re-marshal contributes from the typed struct.
-		// This properly unescapes YAML string values (e.g. \" → ") so Go templates work.
-		var contributesRaw string
-		out, err := yaml.Marshal(&full.Contributes)
-		if err == nil {
-			contributesRaw = string(out)
+		// Full parse succeeded — extract raw contributes and re-serialize via map[string]any
+		// to unescape YAML string values (\" → ") while preserving unknown fields
+		// for strict validation during render.
+		contributesRaw, _ := splitContributesBlock(data)
+		var contribMap map[string]any
+		if err := yaml.Unmarshal([]byte(contributesRaw), &contribMap); err == nil && contribMap != nil {
+			out, err := yaml.Marshal(contribMap)
+			if err == nil {
+				contributesRaw = string(out)
+			}
 		}
 		return &PluginDef{
 			Name:           full.Name,
