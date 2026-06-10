@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createLogger } from "./logger.js";
 import { AgentProcess } from "./agent-process.js";
 import { AcpServer } from "./acp-server.js";
+import { StdioRelay } from "./stdio-relay.js";
 
 const log = createLogger("agent-manager");
 
@@ -11,7 +12,6 @@ interface ManagerConfig {
 }
 
 async function main(): Promise<void> {
-  const port = parseInt(process.env.AGENT_MANAGER_PORT ?? "3100", 10);
   const configPath = process.env.AGENT_MANAGER_CONFIG ?? "/opt/agent-manager/config.json";
   const raw = readFileSync(configPath, "utf-8");
   const config: ManagerConfig = JSON.parse(raw);
@@ -61,20 +61,37 @@ async function main(): Promise<void> {
     log.info("agent ACP authenticated");
   }
 
-  // Upstream: expose ACP over HTTP/WebSocket for channel adapters
-  const server = new AcpServer(agent, { port, cwd: config.cwd });
-  server.setInitResult(initResp.result);
-  await server.start();
+  // WebSocket server: enabled by default on port 3100.
+  // Set AGENT_MANAGER_WS_PORT=0 to disable.
+  const wsPortStr = process.env.AGENT_MANAGER_WS_PORT ?? process.env.AGENT_MANAGER_PORT ?? "3100";
+  const wsPort = parseInt(wsPortStr, 10);
 
-  log.info({ port }, "agent manager ready — ACP endpoint available");
+  // Stdio relay: always available for local ACP clients.
+  // Don't exit on stdin close when WebSocket server is also running.
+  const relay = new StdioRelay(agent, config.cwd, { exitOnClose: wsPort <= 0 });
+  relay.setInitResult(initResp.result);
+  relay.start();
 
-  // Graceful shutdown
-  process.on("SIGTERM", async () => {
-    log.info("shutting down");
-    await server.stop();
-    await agent.stop();
-    process.exit(0);
-  });
+  if (wsPort > 0) {
+    const server = new AcpServer(agent, { port: wsPort, cwd: config.cwd });
+    server.setInitResult(initResp.result);
+    await server.start();
+    log.info({ port: wsPort }, "WebSocket ACP endpoint available");
+
+    process.on("SIGTERM", async () => {
+      log.info("shutting down");
+      await server.stop();
+      await agent.stop();
+      process.exit(0);
+    });
+  } else {
+    log.info("WebSocket server disabled (port=0)");
+    process.on("SIGTERM", async () => {
+      log.info("shutting down");
+      await agent.stop();
+      process.exit(0);
+    });
+  }
 }
 
 main().catch((err) => {
