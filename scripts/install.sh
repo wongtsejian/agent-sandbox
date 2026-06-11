@@ -21,6 +21,7 @@ if [ -n "$EXISTING" ] && [ "$EXISTING" != "$BIN_DIR/agent-sandbox" ]; then
   cp "$BIN_DIR/agent-sandbox" "$EXISTING" 2>/dev/null \
     || sudo cp "$BIN_DIR/agent-sandbox" "$EXISTING"
 else
+  # shellcheck disable=SC2016
   case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
     *) printf 'Add to your shell profile:\n  export PATH="%s:$PATH"\n' "$BIN_DIR" ;;

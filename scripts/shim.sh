@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-SHIM_VERSION="1.7.0"
+SHIM_VERSION="1.8.0"
 GITHUB_REPO="donbader/agent-sandbox"
 SANDBOX_HOME="${AGENT_SANDBOX_HOME:-$HOME/.agent-sandbox}"
 CACHE_DIR="$SANDBOX_HOME/core"
@@ -11,10 +11,38 @@ die() { printf 'Error: %s\n' "$1" >&2; exit 1; }
 
 # --- Helpers ---
 
+CURL_CONNECT_TIMEOUT=10
+CURL_MAX_TIME=60
+
+find_local_latest() {
+  # Find the newest cached version with a .complete sentinel.
+  # Returns the version string (e.g. "1.30.0") or empty if none found.
+  _found=""
+  if [ -d "$CACHE_DIR" ]; then
+    _found=$(
+      for _d in "$CACHE_DIR"/*/; do
+        [ -f "${_d}.complete" ] && basename "$_d"
+      done | sort -t. -k1,1n -k2,2n -k3,3n | tail -1
+    )
+  fi
+  printf '%s' "$_found"
+}
+
 resolve_latest() {
-  curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases?per_page=20" \
+  _ver=$(curl -fsSL --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" \
+    "https://api.github.com/repos/$GITHUB_REPO/releases?per_page=20" 2>/dev/null \
     | grep '"tag_name":' | grep '"v' | head -1 \
-    | sed 's/.*"v\([^"]*\)".*/\1/'
+    | sed 's/.*"v\([^"]*\)".*/\1/')
+  if [ -n "$_ver" ]; then
+    printf '%s' "$_ver"
+    return
+  fi
+  # Network failed — try local fallback
+  _local=$(find_local_latest)
+  if [ -n "$_local" ]; then
+    printf 'Warning: Failed to resolve latest version (network). Falling back to local %s.\n' "$_local" >&2
+    printf '%s' "$_local"
+  fi
 }
 
 ensure_cached() {
@@ -23,9 +51,21 @@ ensure_cached() {
   _tmp="$_dir.tmp.$$"
   rm -rf "$_tmp"; mkdir -p "$_tmp"
   printf 'Downloading core %s...\n' "$1" >&2
-  curl -fsSL "https://github.com/$GITHUB_REPO/releases/download/v${1}/agent-sandbox-core-v${1}-${PLATFORM}.tar.gz" \
-    | tar -xz -C "$_tmp" || { rm -rf "$_tmp"; die "Failed to download core $1"; }
-  rm -rf "$_dir"; mv "$_tmp" "$_dir"; touch "$_dir/.complete"
+  if curl -fsSL --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" \
+    "https://github.com/$GITHUB_REPO/releases/download/v${1}/agent-sandbox-core-v${1}-${PLATFORM}.tar.gz" \
+    | tar -xz -C "$_tmp"; then
+    rm -rf "$_dir"; mv "$_tmp" "$_dir"; touch "$_dir/.complete"
+  else
+    rm -rf "$_tmp"
+    # Download failed — try local fallback
+    _local=$(find_local_latest)
+    if [ -n "$_local" ]; then
+      printf 'Warning: Failed to download core %s (timeout or network error). Falling back to local %s.\n' "$1" "$_local" >&2
+      VER="$_local"
+    else
+      die "Failed to download core $1 and no local version available"
+    fi
+  fi
 }
 
 self_replace() {
@@ -115,11 +155,14 @@ if [ -n "$DEV_MODE" ]; then
     die "Dev mode requires 'go' or 'flox' on PATH"
   fi
   # Strip --dev from args before exec
-  _args=""
-  for _arg in "$@"; do
-    [ "$_arg" = "--dev" ] || _args="$_args \"$_arg\""
+  _i=0; _total=$#
+  while [ "$_i" -lt "$_total" ]; do
+    _i=$((_i + 1))
+    _arg="$1"; shift
+    [ "$_arg" = "--dev" ] && continue
+    set -- "$@" "$_arg"
   done
-  eval exec "$DEV_BIN" $_args
+  exec "$DEV_BIN" "$@"
 fi
 
 # --- Resolve core version ---
@@ -138,30 +181,32 @@ resolve_fleet_version() {
   resolve_version_from_yaml "$_agent_yaml"
 }
 
+# require_latest resolves latest version or dies trying.
+require_latest() {
+  _v=$(resolve_latest)
+  [ -n "$_v" ] || die "Could not resolve latest core version"
+  printf '%s' "$_v"
+}
+
 if [ -f "$PROJECT_DIR/agent.yaml" ]; then
   VER=$(resolve_version_from_yaml "$PROJECT_DIR/agent.yaml")
   if [ -z "$VER" ]; then
-    VER=$(resolve_latest)
-    [ -n "$VER" ] || die "Could not resolve latest core version"
+    VER=$(require_latest)
     printf 'Warning: core_version not set. Using latest (%s).\n' "$VER" >&2
     printf 'Pin it: add core_version: %s to agent.yaml\n' "$VER" >&2
   elif [ "$VER" = "latest" ]; then
-    VER=$(resolve_latest)
-    [ -n "$VER" ] || die "Could not resolve latest core version"
+    VER=$(require_latest)
   fi
 elif [ -f "$PROJECT_DIR/fleet.yaml" ]; then
   VER=$(resolve_fleet_version)
   if [ -z "$VER" ]; then
-    VER=$(resolve_latest)
-    [ -n "$VER" ] || die "Could not resolve latest core version"
+    VER=$(require_latest)
     printf 'Warning: core_version not set in fleet agents. Using latest (%s).\n' "$VER" >&2
   elif [ "$VER" = "latest" ]; then
-    VER=$(resolve_latest)
-    [ -n "$VER" ] || die "Could not resolve latest core version"
+    VER=$(require_latest)
   fi
 elif [ "$CMD" = "init" ]; then
-  VER=$(resolve_latest)
-  [ -n "$VER" ] || die "Could not resolve latest core version"
+  VER=$(require_latest)
 else
   die "No agent.yaml or fleet.yaml found in $PROJECT_DIR. Run 'agent-sandbox init' first."
 fi
