@@ -1,93 +1,42 @@
-# Decisions
+# Architecture Decisions
 
-## Key Design Decisions
+Key design decisions and their rationale. For detailed ADRs, see [docs/reference/adr/](../reference/adr/).
+
+## Decision Table
 
 | # | Decision | Rationale |
 |---|----------|-----------|
-| 1 | Two plugin types (Runtime + Feature) | Runtime is singular (base image). Features are additive. Config reads naturally. |
-| 2 | Runtime plugins are pure data (YAML) | No CLI upgrade needed for runtime fixes. CLI is a generic template engine. |
-| 3 | Feature plugins are hybrid (YAML + code) | Metadata is data. Gateway handlers need Go. Channel manager needs TypeScript. Code compiles during Docker build, not CLI build. |
-| 4 | Universal gateway binary | Build once per container, configure per-agent. Handlers compiled during Docker build. |
-| 5 | Channel manager always entrypoint | Agent is always a child process. No WrapCmd hack. |
-| 6 | Allow-all egress default | Dev agents need unrestricted installs. MITM only where needed. |
-| 7 | Gateway as separate container | Security isolation. Agent cannot access secrets. Per-agent config without shared state. |
-| 8 | Core plugins fetched from Releases | CLI fetches core tarball from GitHub Releases. Gateway/channel code recompiles during Docker build — handler fixes only need container rebuild. |
-| 9 | Home override via /opt staging | Volume hides /home/agent. Staging + entrypoint cp ensures configs win. |
-| 10 | Channels are channel-manager sub-plugins | Messaging is channel-manager's concern. TypeScript in plugin's `channel/` dir. |
-| 11 | All credentials through gateway | Even channel-manager gets dummy tokens. Real creds never in container env. |
-| 12 | Gateway code compiles during Docker build | Gateway source fetched from Releases, cached locally. Multi-stage Dockerfile compiles it. User doesn't need Go. |
-| 13 | Optional fleet.yaml | Single agent first-class. Multi-agent additive. |
-| 14 | UDP restricted | DNS redirected to gateway resolver. All other UDP dropped. Prevents tunneling. |
-| 15 | Inline runtime definition | Users can define custom runtimes directly in agent.yaml without creating plugin files. |
+| 1 | POSIX shell shim | Single `curl \| sh` install. Shim is ~220 lines of `/bin/sh`. Handles version resolution, caching, upgrades. No runtime dependency beyond curl. |
+| 2 | Separate shim + core binary | Shim never changes (stable install path). Core binary can ship new features without users re-installing. Version pinning in agent.yaml. |
+| 3 | Gateway as pre-built binary | Gateway ships from GitHub Releases as a compiled Go binary for linux/amd64 + linux/arm64. No per-project compilation. Plugins are TypeScript loaded at runtime — no recompilation needed for plugin changes. |
+| 4 | TypeScript plugins via goja | Plugins need access to crypto, HTTP, filesystem. Go templates are too limited. TypeScript via goja gives a familiar language with sandboxed execution. No node_modules or npm needed — single-file scripts with host APIs. |
+| 5 | Transparent proxy via iptables | Agent doesn't know it's proxied. Works with any HTTP client, any language, any tool. No env vars to set, no proxy config. Requires NET_ADMIN capability and DNAT rules. |
+| 6 | All credentials through gateway | Real secrets never enter the agent container. Gateway injects auth headers on matching domains. If the agent is compromised, it can't exfiltrate credentials — they only exist in gateway memory. |
+| 7 | Ephemeral by default | Containers start fresh every restart. No state accumulates. Volume persistence is opt-in per plugin. This prevents state-related bugs and security drift. |
+| 8 | Runtime presets are pure YAML | No Go code for presets. CLI reads `runtime.yaml` and generates Dockerfile. Adding a new runtime (e.g. a new agent) requires only YAML — no Go changes, no CLI release. |
+| 9 | Plugin updates don't require CLI upgrades | Plugins ship in the core tarball, separate from the shim. New plugins or plugin changes only need a core version bump. The CLI is a generic template engine. |
+| 10 | MITM for HTTPS interception | Gateway acts as a TLS-terminating proxy for configured domains. Per-domain certs signed by an ephemeral CA trusted by the agent. Enables header injection and request inspection for HTTPS traffic. |
+| 11 | Fleet mode shares config | `shared` block in fleet.yaml is merged into all agents. Reduces duplication. Per-agent overrides win conflicts. Each agent still gets its own gateway (independent security boundaries). |
+| 12 | Core version pinning | `core_version: 1.31.1` in agent.yaml ensures reproducible builds. `latest` is available but discouraged for production. Shim falls back to local cache if download fails. |
 
-## Why Data-Driven Plugins (ADR)
+## Evolution from agent-fleet
 
-**Problem:** In the original compile-time design, any plugin fix (e.g., wrong CMD flag) required a CLI binary release. Users had to upgrade CLI + rebuild containers for trivial changes.
+This project evolved from [agent-fleet](https://github.com/donbader/agent-fleet). Key architectural shifts:
 
-**Decision:** Split plugins into data (YAML/templates) and code (Go/TypeScript):
-- Data (runtime.yaml, feature.yaml) → read by CLI at generate time → no compilation
-- Code (gateway/*.go, channel/*.ts) → compiled/bundled during Docker build → not in CLI binary
+| Before (agent-fleet) | After (agent-sandbox) |
+|----|-----|
+| Monolithic Go binary | Shim + versioned core binary |
+| Go middleware compiled per-project | TypeScript loaded at runtime |
+| Gateway source in Docker build | Pre-built gateway binary |
+| Hardcoded agent types | Data-driven runtime presets |
+| Single agent per project | Fleet mode (multi-agent) |
 
-**Consequences:**
-- CLI binary is smaller (no plugin Go code compiled in)
-- Gateway/channel handler fixes only require container rebuild, not CLI upgrade
-- Gateway handlers are still type-safe Go (compiled during Docker build)
-- Slightly more complex generate logic (read YAML + resolve files vs call Go function)
+## Principles
 
-## Comparison with agent-fleet
-
-| Aspect | agent-fleet | agent-sandbox |
-|--------|-------------|---------------|
-| Config | fleet.yaml + agent.yaml | One agent.yaml (fleet optional) |
-| Egress rules | User writes manually | Auto-derived from plugins |
-| Runtime | Provider + render.sh | runtime.yaml (pure data) |
-| Extensibility | Shell scripts | YAML + Go/TypeScript |
-| Home customization | user_base + init_scripts + Dockerfile | `home/` dir (auto-override) |
-| Packages | Write Dockerfile template | YAML list in config |
-| Docker access | Egress rule provider | `docker: true` |
-| Deploy | generate → compose up | generate → compose up |
-| Egress default | Deny | Allow all |
-| Gateway | Sidecar container | Separate container (security isolation) |
-| Plugin updates | Requires CLI upgrade | Handler/channel fixes need container rebuild only |
-
-## Open Questions
-
-1. **Plugin versioning** — How to version plugin YAML schemas?
-2. **Custom egress restrictions** — Option for default-deny mode?
-3. **Plugin registry** — Remote plugin sources beyond local override?
-4. **Resource limits** — CPU/memory per agent? Configurable?
-5. **Health checks** — Detect agent crash vs idle?
-6. **Auth flow** — Codex device flow, claude login — how to handle first-time auth?
-
-## Maintainability
-
-### Risks & Mitigations
-
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Gateway source fetched from Releases | ~20MB fetched on first run, cached locally | Accept it. Fetches once per version. Channel manager TypeScript adds ~5MB. |
-| Plugin YAML schema changes | Existing plugins break | Semantic versioning on schema. Additive only. |
-| Multi-stage build adds time | First build ~60s | Docker layer cache. Gateway stage rarely changes. Subsequent builds ~5s. |
-| Two languages (Go + TypeScript) | Higher maintenance | Clear boundary: Go = proxy/gateway. TypeScript = messaging/channel-manager. No overlap. |
-| Gateway fix requires rebuild | Slow rollout | Edit gateway source locally, rebuild container. No CLI upgrade needed. |
-
-### Upgrade Path
-
-| Change | User action |
-|--------|-------------|
-| New built-in plugin | Push `v*` tag, then `agent-sandbox generate` fetches it |
-| Plugin data fix (runtime.yaml) | Push `v*` tag, then `agent-sandbox generate` fetches it |
-| Gateway handler fix | Push `v*` tag, then rebuild container |
-| Channel plugin fix | Push `v*` tag, then rebuild container |
-| CLI template engine fix | `agent-sandbox upgrade` |
-| Config schema change | Edit agent.yaml → re-generate |
-
-### What NOT to Build (YAGNI)
-
-- Plugin marketplace (until >20 community plugins exist)
-- Hot reload (rebuild is fast enough)
-- Web UI dashboard (CLI + Telegram is sufficient)
-- Multi-host orchestration (use k8s)
-- Plugin dependency resolution (keep plugins independent)
-- Config migration tool (simple YAML, manual edit is fine)
-- Remote plugin registry (local override is sufficient for now)
+- **Every phase produces a working `generate && compose up --build`** — no half-implemented features.
+- **Plugin updates never require CLI upgrades** — the CLI is a generic engine.
+- **Runtime presets are pure data** — YAML only, no Go code.
+- **Feature plugins are TypeScript** — loaded at gateway runtime, no recompilation.
+- **Transparent proxy** — agent doesn't know it's proxied.
+- **Ephemeral by default** — containers start fresh every restart.
+- **All credentials through gateway** — real creds never in container env.

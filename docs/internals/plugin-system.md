@@ -1,15 +1,15 @@
 # Plugin System (Internals)
 
-How the plugin system works under the hood. For creating plugins, see [Creating Plugins](../guides/creating-plugins.md).
+How the plugin system works under the hood. For creating plugins, see [Creating Plugins](../guides/creating-plugins.md). For the user-facing reference, see [Plugin Authoring](../plugins.md).
 
 ## Architecture
 
 Two plugin types:
 
-- **Runtime presets** — pure YAML defining base image, packages, and CMD. One per agent.
-- **Feature plugins** — YAML metadata with optional Go gateway middleware. Additive. Multiple per agent.
+- **Runtime presets** — pure YAML defining base image, packages, and CMD. One per agent. Located in `core/presets/<name>/runtime.yaml`.
+- **Feature plugins** — YAML metadata + TypeScript middleware/routes loaded at gateway runtime. Additive, multiple per agent. Located in `core/plugins/<name>/`.
 
-Key principle: plugin updates never require CLI upgrades. The CLI is a generic template engine that reads YAML and renders templates.
+Key principle: plugin updates never require CLI upgrades. The CLI is a generic template engine that reads YAML and renders templates. Gateway loads TypeScript at startup via goja (embedded JS runtime).
 
 ## Directory Structure
 
@@ -27,28 +27,28 @@ core/presets/
 ```
 core/plugins/
   github-pat/
-    plugin.yaml              ← metadata, options schema, contributions
-    middlewares/
-      github-pat-auth.go     ← Go template rendered at generate-time
-    README.md
-  home-override/
     plugin.yaml
-    README.md
-  ssh/
-    plugin.yaml
-    README.md
+    src/
+      github-auth.ts       ← TypeScript loaded at gateway runtime
   mcp-oauth/
     plugin.yaml
-    README.md
+    src/
+      oauth.ts
+      login.ts
+      callback.ts
+      pkce.ts
+  ssh/
+    plugin.yaml
+  home-override/
+    plugin.yaml
   agent-manager-acp/
     plugin.yaml
-    agent-manager/           ← asset directory (TypeScript source)
-    README.md
+    agent-manager/         ← asset directory (TypeScript source for sidecar)
 ```
 
 ## Plugin Resolution
 
-Plugin references are resolved by prefix:
+Plugin references resolved by prefix:
 
 | Prefix | Source | Example |
 |--------|--------|---------|
@@ -60,10 +60,11 @@ Local plugin paths are validated to not escape the project directory (path trave
 
 ## Core Version Fetching
 
-- CLI queries GitHub Releases API for `v*` tags
-- Downloads `agent-sandbox-core-<version>.tar.gz` from release assets
-- Caches at `~/.cache/agent-sandbox/core/<version>/` (Linux) or `~/Library/Caches/agent-sandbox/core/<version>/` (macOS)
-- `core_version: latest` resolves to the newest tag (cached for 1 hour)
+- Shim queries GitHub Releases API for `v*` tags (60s timeout)
+- Downloads `agent-sandbox-core-<version>-<platform>.tar.gz`
+- Caches at `~/.agent-sandbox/core/<version>/`
+- If download fails or times out, falls back to newest locally cached version
+- `core_version: latest` resolves to the newest tag
 
 ## Generation Pipeline (per agent)
 
@@ -72,18 +73,17 @@ Local plugin paths are validated to not escape the project directory (path trave
 3. Fetch core version from GitHub Releases (cached)
 4. Resolve plugins (`@builtin/` from core FS, `./` from local FS)
 5. Parse `plugin.yaml`, validate options against schema
-6. Check `requires` dependencies (fail if missing)
-7. Extract plugin assets to `.build/plugins/`
-8. Render all `contributes` fields as Go templates (with plugin options + agent context)
-9. Merge contributions across all plugins (runtime, gateway, sidecar)
-10. Render Dockerfile from template (preset + extra_builds + plugin contributions)
-11. Render entrypoint.sh from template
-12. Build gateway runtime config (collect MITM domains from service URLs)
-13. Generate auth-header middleware from `headers` with `${ENV_VAR}` patterns
-14. Copy/render custom middleware `.go` files into gateway build context
-15. Extract gateway source into build context
-16. Generate JSON Schema
-17. Write docker-compose.yml
+6. Extract plugin assets to `.build/plugins/`
+7. Render all `contributes` fields as Go templates (with plugin options + agent context)
+8. Merge contributions across all plugins (runtime, gateway)
+9. Render Dockerfile from template (preset + extra_builds + plugin contributions)
+10. Render entrypoint.sh from template
+11. Build gateway runtime config (collect MITM domains from service URLs)
+12. Generate auth-header config from `headers` with `${ENV_VAR}` patterns
+13. Copy TypeScript plugin sources into gateway build context
+14. Generate `plugins.yaml` for gateway runtime plugin loading
+15. Copy pre-built gateway binary into build context
+16. Write docker-compose.yml
 
 ## Template Rendering
 
@@ -100,30 +100,33 @@ type RenderContext struct {
 
 Template functions: `toJSON`, `asset`, `index`.
 
-## Gateway Middleware Compilation
+## Gateway Plugin Loading (Runtime)
 
-Custom Go middlewares are rendered as Go templates at generate-time. When Go is available, the generator copies the source tree to a temp directory, injects the rendered middleware files + a blank import, compiles the gateway binary, then cleans up. The source tree is never modified.
+The gateway loads plugins at startup — no compilation step:
 
-1. Generate-time: render `.go` template with plugin options (secrets resolved from `.env`)
-2. Copy gateway source to a temp directory
-3. Inject rendered `.go` files into `core/gateway/middlewares/custom/` within the temp dir
-4. Add blank import so Go compiler picks up the custom package
-5. Run `go build` in the temp dir to produce the gateway binary
-6. Copy compiled binary to `.build/`, remove temp dir
+1. Gateway reads `plugins.yaml` (generated by CLI)
+2. For each plugin entry, loads the TypeScript source files via goja (embedded JS runtime)
+3. Middleware functions are registered with domain scoping
+4. Route handlers are registered on the health mux
+5. Plugin options (with secrets resolved) are passed to each handler at invocation time
 
-Middleware uses the SDK:
+TypeScript middleware signature:
 
-```go
-gateway.RegisterMiddleware(gateway.MiddlewareDef{
-    Name:    "my-middleware",
-    Domains: []string{"api.example.com"},
-    Func: func(ctx *gateway.MiddlewareContext) error {
-        ctx.Request.Header.Set("Authorization", "Bearer "+secret)
-        return nil
-    },
-})
-gateway.RegisterSecret(secret)  // redacted from logs
+```typescript
+export default function(ctx: any, options: any) {
+  // ctx.request.setHeader(), ctx.abort(), etc.
+}
 ```
+
+Route handler signature:
+
+```typescript
+export default function(ctx: any, options: any) {
+  // ctx.response.status(), ctx.response.body(), etc.
+}
+```
+
+Host APIs available: `gw.crypto`, `gw.fs`, `gw.http`, `gw.secrets`, `gw.log`.
 
 ## Fleet Mode Merging
 
@@ -131,7 +134,7 @@ gateway.RegisterSecret(secret)  // redacted from logs
 
 - `shared.installations` prepended to per-agent installations (same plugin name → per-agent wins)
 - `shared.gateway.services` prepended to per-agent services (same URL → per-agent wins)
-- Each agent gets its own gateway container with independently compiled middleware
+- Each agent gets its own gateway container with independently loaded plugins
 
 ## Conflict Detection
 
@@ -141,11 +144,10 @@ gateway.RegisterSecret(secret)  // redacted from logs
 
 ## Option Validation
 
-Plugin options are validated at generate-time against the `options` schema in `plugin.yaml`:
+Plugin options validated at generate-time against the `options` schema in `plugin.yaml`:
 
 - Type checking (string, boolean, integer, array, object)
 - Required field enforcement
 - Default value application
-- `${ENV_VAR}` patterns are resolved from `.env` before validation
-
-Path-type options (e.g., `authorized_keys`, `home_directory`) are validated to not escape the project directory.
+- `${ENV_VAR}` patterns resolved from `.env` before validation
+- Path-type options validated to not escape the project directory

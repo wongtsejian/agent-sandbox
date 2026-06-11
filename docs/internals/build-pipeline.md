@@ -1,257 +1,154 @@
-# Build & Deploy
+# Build Pipeline
 
-## Build Flow
+How `agent-sandbox generate` transforms agent.yaml into Docker build artifacts.
+
+## Overview
+
+The generate command reads configuration, resolves plugins, and writes a complete `.build/` directory containing everything needed for `docker compose up --build`. No compilation happens at generate-time (unless `--dev` mode is used for local development).
+
+## Pipeline Flow
 
 ```
-agent-sandbox generate
-  │
-  ├── Detect mode: agent.yaml (single) or fleet.yaml (multi)
-  ├── Load project .env file (resolves secret references for plugins)
-  ├── Read preset: core/presets/<runtime>/
-  ├── Read feature plugins: core/plugins/<feature>/
-  ├── Merge shared features (if fleet mode)
-  │
-  └── Generate .build/:
-        ├── gateway-src/        (fetched from GitHub Releases: core/gateway + core/sdk)
-        ├── home-override/      (from user's home/ dir)
-        ├── Dockerfile.gateway  (gateway container: compile + minimal alpine)
-        ├── Dockerfile          (agent container: runtime + entrypoint)
-        ├── config.yaml         (gateway runtime config: MITM domains + rewriters)
-        ├── entrypoint.sh       (agent: iptables DNAT + CA cert install + exec)
-        └── docker-compose.yml  (two services + shared certs volume + internal network)
-
-agent-sandbox compose up --build -d
-  │
-  └── docker compose -f .build/docker-compose.yml up --build -d
+agent.yaml → resolve plugins → render templates → .build/
 ```
 
-## Plugin Resolution
+Detailed steps:
 
-CLI resolves plugins in order:
-1. Inline definition in agent.yaml (for custom runtimes)
-2. Built-in plugins (fetched from GitHub Releases, cached locally)
+1. **Load configuration** — Parse agent.yaml (or fleet.yaml + per-agent configs). Load `.env` for secret resolution.
 
-## Generated Dockerfiles (Separate Containers)
+2. **Resolve core** — Fetch core tarball from GitHub Releases (cached at `~/.agent-sandbox/core/<version>/`). Contains presets, plugins, templates, and pre-built gateway binaries. Falls back to local cache on network failure (60s timeout).
 
-When gateway is enabled, two Dockerfiles are generated for security isolation:
+3. **Resolve plugins** — `@builtin/` from core tarball, `./` from local filesystem. Validate options, check dependencies.
 
-### Dockerfile.gateway
+4. **Render contributions** — Each plugin's `contributes` fields are rendered as Go templates with access to plugin options and agent context.
+
+5. **Merge contributions** — All plugin contributions are merged (runtime extra_builds, gateway services, volumes, etc.).
+
+6. **Generate Dockerfile** — Combine runtime preset (base image, install commands) with plugin contributions (extra_builds, ports, volumes).
+
+7. **Generate entrypoint.sh** — Pre-entrypoint commands from plugins, then the agent CMD.
+
+8. **Generate gateway config** — `config.yaml` (MITM domains, auth headers, DNS, port forwards) and `plugins.yaml` (TypeScript plugin manifest for runtime loading).
+
+9. **Copy gateway binary** — Pre-built `gateway-linux-<arch>` binary from core tarball into `.build/`.
+
+10. **Copy plugin sources** — TypeScript files from `src/` directories copied to `.build/plugins/<name>/`.
+
+11. **Generate docker-compose.yml** — Orchestrates agent + gateway containers with networking, volumes, and depends_on.
+
+## Generated Artifacts
+
+```
+.build/
+  Dockerfile                  ← agent container (preset + plugin contributions)
+  entrypoint.sh               ← startup script (pre_entrypoint + CMD)
+  docker-compose.yml          ← orchestration
+  gateway/
+    gateway-linux-<arch>      ← pre-built binary (from core tarball)
+    config.yaml               ← proxy config (MITM domains, auth headers, DNS)
+    plugins.yaml              ← TypeScript plugin manifest
+    Dockerfile                ← minimal FROM + COPY binary + config
+    ca/                       ← generated CA cert/key for MITM
+  plugins/
+    github-pat/
+      src/github-auth.ts      ← TypeScript loaded at gateway runtime
+    mcp-oauth/
+      src/oauth.ts
+      src/login.ts
+      src/callback.ts
+      src/pkce.ts
+```
+
+## Gateway Container
+
+The gateway Dockerfile is minimal — no compilation:
 
 ```dockerfile
-# Compile gateway binary
-FROM golang:1.24-alpine AS builder
-WORKDIR /src
-COPY gateway-src/ .
-RUN go mod tidy && CGO_ENABLED=0 go build -o /gateway ./cmd/gateway/
-
-# Minimal runtime
-FROM alpine:3.20
-RUN apk add --no-cache ca-certificates
-COPY --from=builder /gateway /usr/local/bin/gateway
+FROM debian:bookworm-slim
+COPY gateway-linux-amd64 /usr/local/bin/gateway
 COPY config.yaml /etc/gateway/config.yaml
-ENTRYPOINT ["gateway"]
+COPY plugins.yaml /etc/gateway/plugins.yaml
+COPY plugins/ /etc/gateway/plugins/
+COPY ca/ /etc/gateway/ca/
+HEALTHCHECK CMD wget -qO- http://localhost:8080/health || exit 1
+CMD ["gateway"]
 ```
 
-### Dockerfile (Agent)
+The gateway binary is cross-compiled during the release workflow (CI) for linux/amd64 and linux/arm64. No per-project compilation is needed.
 
-```dockerfile
-FROM node:24-slim
+## Agent Container
 
-# System packages (iptables for transparent proxy routing)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    iptables ca-certificates git curl iputils-ping \
-    && rm -rf /var/lib/apt/lists/*
+The agent Dockerfile combines:
+- Base image from runtime preset (e.g. `node:22-slim` for codex)
+- System packages from preset
+- Plugin `extra_builds` (ENV, RUN, COPY lines)
+- iptables rules for transparent proxy (NET_ADMIN)
+- User creation and permissions
+- Entrypoint script
 
-# Agent user
-RUN useradd -m -s /bin/bash agent
+## Secret Resolution
 
-# Runtime install (from preset)
-RUN npm install -g @openai/codex
+Secrets in plugin options (`${ENV_VAR}`) are resolved at generate-time from:
+1. Project `.env` file
+2. Shell environment
 
-# Home override
-COPY home-override/ /opt/home-override/
+Resolved values are baked into gateway `config.yaml` (for auth-header injection) and available to TypeScript plugins via the `options` parameter.
 
-COPY entrypoint.sh /opt/entrypoint.sh
-RUN chmod +x /opt/entrypoint.sh
-ENTRYPOINT ["/opt/entrypoint.sh"]
-CMD ["sleep", "infinity"]
+## CA Lifecycle
+
+If any plugin declares MITM domains (services with `https://` URLs), the generator:
+1. Creates a self-signed CA (cert + key) in `.build/gateway/ca/`
+2. The gateway uses this CA to issue per-domain certs at runtime
+3. The agent container trusts this CA (injected into system trust store)
+4. CA is regenerated on every `generate` (ephemeral)
+
+## Dev Mode (`--dev`)
+
+When running from the source repo with `--dev`:
+- Skips GitHub Releases fetch
+- Uses plugins directly from `core/plugins/`
+- Cross-compiles the gateway binary for the Docker daemon's architecture
+- Templates loaded from local filesystem instead of embedded FS
+
+```bash
+agent-sandbox --dev -C examples/local-coding generate
 ```
 
-The agent entrypoint:
-1. Waits for gateway health check (`curl http://gateway:8080/health`)
-2. Resolves gateway container IP
-3. Sets up iptables DNAT: outbound TCP 443 → gateway:8443
-4. Installs gateway's CA cert from shared volume (`/shared/certs/ca.crt`)
-5. Execs into CMD
+## Multi-Agent (Fleet Mode)
 
-### Dockerfile Without Gateway (Simple Mode)
-
-When no features need gateway, the Dockerfile is simple:
-
-```dockerfile
-FROM node:24-slim
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN npm install -g @openai/codex
-
-RUN useradd -m -s /bin/bash agent
-USER agent
-WORKDIR /home/agent
-
-CMD ["sleep", "infinity"]
+Fleet mode generates one `.build/` per agent:
+```
+.build/
+  agent-a/
+    Dockerfile
+    entrypoint.sh
+    gateway/...
+  agent-b/
+    Dockerfile
+    entrypoint.sh
+    gateway/...
+  docker-compose.yml          ← single compose file orchestrating all agents
 ```
 
-## What Gets Fetched from GitHub Releases
-
-| Content | Purpose | Size | Cache |
-|---------|---------|------|-------|
-| Gateway core source (`core/gateway/`) | TCP proxy, SNI, MITM framework | ~15MB | Indefinite (per version) |
-| SDK module (`core/sdk/`) | Gateway middleware interfaces | ~5KB | Indefinite (per version) |
-| Built-in presets (`core/presets/`) | Base image, install commands, CMD | ~10KB | Indefinite (per version) |
-| Built-in plugins (`core/plugins/`) | Feature plugin definitions | ~10KB | Indefinite (per version) |
-| Root go.mod + go.sum | Gateway build dependencies | ~5KB | Indefinite (per version) |
-| Generation templates (`templates/`) | Dockerfile, entrypoint, gateway Dockerfile | ~5KB | Indefinite (per version) |
-
-For `core_version: latest`, the CLI queries the GitHub API to find the newest `v*` release (cached 1h). For specific versions (e.g. `core_version: v1.0.0`), the tarball is cached indefinitely.
-
-Gateway rewriters (auth-header) are config-driven — instantiated at runtime from `config.yaml`, not compiled per-plugin.
-
-## Secret Resolution via .env
-
-The `generate` command loads the project's `.env` file early in the build flow. This resolves `${SECRET_NAME}` references in plugin options to their actual values. The primary consumer is the `auth-header` gateway middleware — resolved credentials are baked into the gateway binary's `config.yaml` at compile time so the gateway can inject auth headers without runtime env var access.
-
-## Generated Compose Behavior
-
-The generated `docker-compose.yml` includes several conveniences:
-
-- **Network alias:** The agent service gets an `agent` network alias, so other containers on the internal network can reach it by hostname.
-- **Healthcheck:** If the agent runtime exposes ports (declared in `preset.yaml`), a healthcheck is added using `curl` against the first declared port's `/health` endpoint.
-- **Sidecar dependency:** Any sidecar services defined by plugins implicitly get `depends_on: { agent: { condition: service_healthy } }`, ensuring the agent is healthy before sidecars start.
-
-## Template Functions
-
-Plugin `contributes.runtime.extra_builds` lines are evaluated as Go templates. Available functions:
-
-| Function | Description | Example |
-|----------|-------------|---------|
-| `toJSON` | Serializes any value to a JSON string | `{{ toJSON .options.my_config }}` |
-
-## Gateway Compilation
-
-The gateway binary is compiled during Docker build, not CLI build:
-
-1. CLI fetches gateway core source from GitHub Releases cache to `.build/gateway-src/` (includes `core/gateway/` + `core/sdk/` + root `go.mod`/`go.sum`)
-2. CLI generates `config.yaml` with rewriter rules from active feature plugins
-3. Docker multi-stage compiles gateway binary into a single binary
-4. Config-driven rewriter types (`auth-header`) are instantiated at runtime from `config.yaml`
-
-This means:
-- Gateway config changes = re-run `agent-sandbox generate`, rebuild container
-- User doesn't need Go installed (Docker handles compilation)
-
-## CA Certificate Lifecycle
-
-The CA keypair is generated at **gateway startup** (not build time):
-
-1. Gateway starts → generates ECDSA CA cert + key
-2. Writes CA cert to shared volume: `/shared/certs/ca.crt`
-3. Agent entrypoint waits for gateway health → copies CA cert from volume → `update-ca-certificates`
-4. All MITM'd connections use certificates signed by this runtime-generated CA
-
-## Channel Manager Loading
-
-The channel manager is TypeScript. Runs as the container entrypoint when channels are active:
-
-1. CLI extracts channel manager runtime to `.build/channel-manager-src/`
-2. CLI copies active feature `channel/` dirs to `.build/channel-manager-plugins/<name>/`
-3. Channel manager dynamically imports plugins at runtime from `/opt/channel-manager/plugins/<name>/`
-4. Channel manager spawns agent CLI as child process (reads cmd from channel-manager-config.json)
-
-## Multi-Agent Topology
-
-```
-┌─ Internal Network ──────────────────────────────────────────┐
-│                                                              │
-│  ┌─ coder ───────────────────────────────────────────────┐  │
-│  │  Gateway (github + telegram rules)                     │  │
-│  │  Agent (codex, iptables DNAT → gateway:8443)           │  │
-│  └────────────────────────────────────────────────────────┘  │
-│                                                              │
-│  ┌─ reviewer ────────────────────────────────────────────┐  │
-│  │  Gateway (github rules)                                │  │
-│  │  Agent (claude-code, iptables DNAT → gateway:8443)     │  │
-│  └────────────────────────────────────────────────────────┘  │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
-
-Each agent has its own gateway instance (same binary, different config). Agent traffic routes to its gateway via iptables DNAT (port 443 → gateway:8443).
-
-## Project Structure
-
-```
-agent-sandbox/
-  go.work
-
-  scripts/
-    shim.sh                 ← POSIX shell shim (installed as `agent-sandbox`)
-    install.sh              ← Installer (places shim at ~/.agent-sandbox/bin/)
-
-  cmd/agent-sandbox-core/   ← Core CLI binary (all real logic)
-    main.go
-
-  cmd/agent-sandbox/        ← Legacy CLI entrypoint (being retired after v1.27.0)
-    main.go
-
-  core/
-    gateway/                ← Gateway core source (fetched from Releases)
-      go.mod
-      cmd/gateway/main.go
-      internal/proxy/       ← TCP listener, SNI routing, passthrough
-      internal/mitm/        ← MITM handler, cert generation, rewriters
-      internal/dns/         ← UDP DNS forwarder
-      internal/redact/      ← Secret-masking slog handler
-
-    sdk/                    ← Gateway middleware interfaces (fetched from Releases)
-      go.mod
-      gateway/middleware.go
-
-    presets/                ← Runtime presets (codex, claude-code, pi)
-      codex/preset.yaml
-      claude-code/preset.yaml
-
-    plugins/                ← Feature plugins (github-pat, mcp-oauth)
-      github-pat/plugin.yaml
-      mcp-oauth/plugin.yaml
-```
+Each agent gets its own gateway with independently configured plugins and MITM domains.
 
 ## Release Model
 
-### Core Release (primary)
+The `core-release.yml` workflow (triggered on `v*` tags) produces platform tarballs:
 
-Tagged `v*`. Produces 4 platform-specific tarballs:
-
-| Platform | Tarball |
-|----------|---------|
-| macOS ARM64 | `agent-sandbox-core-v{VER}-darwin-arm64.tar.gz` |
-| macOS AMD64 | `agent-sandbox-core-v{VER}-darwin-amd64.tar.gz` |
-| Linux AMD64 | `agent-sandbox-core-v{VER}-linux-amd64.tar.gz` |
-| Linux ARM64 | `agent-sandbox-core-v{VER}-linux-arm64.tar.gz` |
+```
+agent-sandbox-core-v1.31.1-darwin-arm64.tar.gz
+agent-sandbox-core-v1.31.1-darwin-amd64.tar.gz
+agent-sandbox-core-v1.31.1-linux-arm64.tar.gz
+agent-sandbox-core-v1.31.1-linux-amd64.tar.gz
+```
 
 Each tarball contains:
-- `agent-sandbox-core` — the host binary
-- `gateway/` — gateway source for Docker build
-- `presets/` — runtime preset definitions
-- `plugins/` — built-in plugin definitions
-- `templates/` — generation templates
+- `agent-sandbox-core` — host CLI binary
+- `presets/` — runtime YAML files
+- `plugins/` — plugin YAML + TypeScript sources
+- `templates/` — Go text/template `.tmpl` files
+- `gateway/bin/` — pre-built gateway binaries (linux/amd64 + linux/arm64)
+- `sdk/` — Go SDK for gateway extensions
 
-### Shim Release (rare)
-
-Tagged on shim version change. The release artifact is the raw `shim.sh` script. Only changes when the shim protocol itself changes (new env vars, new resolution logic, new config file support like fleet.yaml).
-
-### CLI Release (legacy)
-
-GoReleaser-based. Being retired after v1.27.0. Existing users should migrate to the shim via `agent-sandbox upgrade`.
+The shim downloads and caches the appropriate platform tarball on first run.

@@ -27,6 +27,20 @@ The split solves all three: the shim is stable, the core is versioned per-projec
 
 The shim never interprets project config beyond `core_version`. It's intentionally minimal so it rarely needs updating.
 
+### Download Timeouts and Offline Fallback (shim v1.8.0)
+
+As of v1.31.1 (shim v1.8.0), both network calls — the GitHub API version resolution and the tarball download — use `--connect-timeout 10 --max-time 60`. This prevents the shim from hanging indefinitely on flaky or unreachable networks.
+
+If either call fails or times out, the shim falls back gracefully:
+
+1. **`resolve_latest()` failure** — if the GitHub API call to resolve the latest tag fails, the shim calls `find_local_latest()` instead of aborting.
+2. **Tarball download failure** — if the download of a specific version fails, the shim also calls `find_local_latest()`.
+3. **`find_local_latest()`** scans `~/.agent-sandbox/core/*/` for the newest directory containing a `.complete` sentinel file (i.e., a previously-successful extraction).
+4. If a local version is found, the shim emits a warning to stderr (e.g. `[warn] Network unavailable, using cached v0.13.0`) and proceeds with that version.
+5. If no local version exists (first-ever run with no cache), the shim exits with a clear error explaining that network access is required for initial setup.
+
+This means `agent-sandbox` works offline after the first successful core download — useful for air-gapped environments, CI with intermittent connectivity, or GitHub outages.
+
 ## The Core Binary
 
 `agent-sandbox-core` is a self-contained Go binary that implements all real commands: `init`, `generate`, `compose`, `audit`, `gateway-url`.
